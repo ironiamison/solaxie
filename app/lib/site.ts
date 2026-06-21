@@ -3,3 +3,6 @@ export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://solaxie.com
 export const SITE_NAME = "Solaxie";
 export const SITE_DESCRIPTION =
   "Collect, breed, and battle Solaxies on Solana. Link your wallet and play at Solaxie.";
+
+export const TWITTER_HANDLE = "solaxiedna";
+export const TWITTER_URL = "https://x.com/solaxiedna";

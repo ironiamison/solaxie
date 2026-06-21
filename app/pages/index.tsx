@@ -45,6 +45,7 @@ import { sfx } from "@/lib/sfx";
 import { BreedModal, UsernameModal } from "@/components/world/modals";
 import { SpendBurnMeter } from "@/components/world/SpendBurnMeter";
 import { LeaderboardModal } from "@/components/world/LeaderboardPanel";
+import { TwitterLink } from "@/components/world/TwitterLink";
 import { avatarSrc } from "@/lib/profile";
 import type { PublicPlayer } from "@/lib/public-player";
 import Atmosphere from "@/components/world/Atmosphere";
@@ -704,7 +705,9 @@ export default function World() {
             <ResourcePill icon="/icons/dna.png" label="DNA" value={resources.dna} />
             <ResourcePill icon="/icons/egg.png" label="Eggs" value={resources.eggs} />
             <EnergyPill energy={resources.energy} max={resources.maxEnergy} streak={resources.streak} />
-            <div className="ml-auto">
+            <TwitterLink className="hidden sm:inline-flex" />
+            <div className="ml-auto flex items-center gap-2">
+              <TwitterLink className="sm:hidden" />
               <ProfileDropdown world={world} />
             </div>
           </header>

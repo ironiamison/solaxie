@@ -1,8 +1,5 @@
 import { Html, Head, Main, NextScript } from 'next/document'
-
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://solaxie.com";
-const SITE_NAME = "Solaxie";
-const SITE_DESC = "Collect, breed, and battle Solaxies on Solana. Link your wallet and play.";
+import { SITE_URL, SITE_NAME, SITE_DESCRIPTION, TWITTER_HANDLE } from '@/lib/site'
 
 // Registered as the very first thing in <head> — before Next's dev runtime and
 // error overlay attach their own listeners — so our capture-phase handler wins
@@ -47,16 +44,18 @@ export default function Document() {
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="manifest" href="/site.webmanifest" />
         <meta name="theme-color" content="#ff5fb0" />
-        <meta name="description" content={SITE_DESC} />
+        <meta name="description" content={SITE_DESCRIPTION} />
         <link rel="canonical" href={SITE_URL} />
         <meta property="og:type" content="website" />
         <meta property="og:url" content={SITE_URL} />
         <meta property="og:title" content={SITE_NAME} />
-        <meta property="og:description" content={SITE_DESC} />
+        <meta property="og:description" content={SITE_DESCRIPTION} />
         <meta property="og:image" content={`${SITE_URL}/icon-512.png`} />
         <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:site" content={`@${TWITTER_HANDLE}`} />
+        <meta name="twitter:creator" content={`@${TWITTER_HANDLE}`} />
         <meta name="twitter:title" content={SITE_NAME} />
-        <meta name="twitter:description" content={SITE_DESC} />
+        <meta name="twitter:description" content={SITE_DESCRIPTION} />
         <meta name="twitter:image" content={`${SITE_URL}/icon-512.png`} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

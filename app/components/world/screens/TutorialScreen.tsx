@@ -3,6 +3,7 @@ import { UI } from "@/lib/ui-icons";
 import { sfx } from "@/lib/sfx";
 import type { WorldApi } from "../world";
 import { ProfileDropdown } from "../ProfileDropdown";
+import { TwitterLink } from "../TwitterLink";
 import { GameIcon } from "../GameIcon";
 
 type Section = { id: string; title: string; icon: string; accent: string; body: ReactNode };
@@ -335,6 +336,7 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
           <h1 className="font-display text-lg font-extrabold text-white">Solaxie Tutorial</h1>
           <p className="truncate text-[0.62rem] text-white/50">Learn the island · Link wallet to play</p>
         </div>
+        <TwitterLink />
         <ProfileDropdown world={world} />
       </header>
 
