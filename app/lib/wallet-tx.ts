@@ -1,21 +1,41 @@
 import {
   Connection,
-  PublicKey,
   Transaction,
   type TransactionSignature,
 } from "@solana/web3.js";
 import type { WalletContextState } from "@solana/wallet-adapter-react";
+
+type SendOpts = {
+  blockhash?: string;
+  lastValidBlockHeight?: number;
+  /** When true, keep the tx blockhash (e.g. from server /api/build-burn). */
+  preserveBlockhash?: boolean;
+};
 
 /** Sign + send via wallet adapter (sendTransaction or signTransaction fallback). */
 export async function sendWalletTransaction(
   connection: Connection,
   wallet: Pick<WalletContextState, "publicKey" | "sendTransaction" | "signTransaction">,
   tx: Transaction,
+  opts?: SendOpts,
 ): Promise<TransactionSignature> {
   const owner = wallet.publicKey;
   if (!owner) throw new Error("Wallet not connected");
 
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+  let blockhash = opts?.blockhash ?? tx.recentBlockhash ?? null;
+  let lastValidBlockHeight = opts?.lastValidBlockHeight;
+
+  if (!blockhash || !opts?.preserveBlockhash) {
+    try {
+      const latest = await connection.getLatestBlockhash("confirmed");
+      blockhash = latest.blockhash;
+      lastValidBlockHeight = latest.lastValidBlockHeight;
+    } catch (e) {
+      if (!blockhash) throw e;
+      console.warn("[wallet-tx] client blockhash failed, using provided blockhash", e);
+    }
+  }
+
   tx.feePayer = owner;
   tx.recentBlockhash = blockhash;
 
@@ -23,7 +43,6 @@ export async function sendWalletTransaction(
 
   if (wallet.sendTransaction) {
     try {
-      // skipPreflight avoids RPC simulation failures blocking the wallet popup.
       sig = await wallet.sendTransaction(tx, connection, {
         skipPreflight: true,
         preflightCommitment: "confirmed",
@@ -46,6 +65,16 @@ export async function sendWalletTransaction(
     throw new Error("Wallet cannot sign transactions — reconnect your wallet");
   }
 
-  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+  if (blockhash && lastValidBlockHeight) {
+    try {
+      await connection.confirmTransaction(
+        { signature: sig, blockhash, lastValidBlockHeight },
+        "confirmed",
+      );
+    } catch (confirmErr) {
+      console.warn("[wallet-tx] confirm pending — tx may still land", sig, confirmErr);
+    }
+  }
+
   return sig;
 }

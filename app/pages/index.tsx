@@ -84,10 +84,11 @@ import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile
 import { STARTER_PROFILE, needsUsername, normalizeProfile, formatTrainerName } from "@/lib/profile";
 import { applyEggRecoveryAirdrop, applyEnergyRefillAirdrop, applyLaunchAirdrop } from "@/lib/airdrops";
 import {
-  transferSolaxToBurnWallet,
+  deserializeBurnTransaction,
   verifySolaxBurnTransfer,
 } from "@/lib/solax-burn";
-import { fetchWalletSolaxBalance, resolveSolaxTokenAccount } from "@/lib/wallet-balance";
+import { fetchWalletSolaxBalance } from "@/lib/wallet-balance";
+import { sendWalletTransaction } from "@/lib/wallet-tx";
 import { PublicKey, type Connection } from "@solana/web3.js";
 import {
   applyProgressEvent,
@@ -770,31 +771,51 @@ export default function World() {
         return false;
       }
       try {
-        const displayBal = await readSolaxBalance(connection, publicKey, resourcesRef.current.solax);
-        let held = await resolveSolaxTokenAccount(connection, publicKey);
-        if (!held && displayBal >= cost) {
-          await new Promise((r) => setTimeout(r, 500));
-          held = await resolveSolaxTokenAccount(connection, publicKey);
-        }
-        const chainBal = held?.balance ?? displayBal;
-        setResources((r) => ({ ...r, solax: Math.max(chainBal, r.solax) }));
+        const buildRes = await fetch("/api/build-burn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wallet: publicKey.toBase58(), amount: cost }),
+        });
 
-        if (!held || chainBal < cost) {
+        const buildData = (await buildRes.json().catch(() => ({}))) as {
+          error?: string;
+          balance?: number;
+          account?: string;
+          transaction?: string;
+          blockhash?: string;
+          lastValidBlockHeight?: number;
+        };
+
+        if (!buildRes.ok || !buildData.transaction || !buildData.account) {
           toast(
-            held
-              ? `Need ${cost.toLocaleString()} SOLAX in wallet (you have ${Math.floor(chainBal).toLocaleString()})`
-              : displayBal >= cost
-                ? "Still locating your SOLAX account — hard refresh and try again"
-                : "No SOLAX token account found — buy on pump.fun first",
+            buildData.error ??
+              "Could not prepare SOLAX transfer — reconnect wallet and try again",
             { critical: true },
           );
           return false;
         }
 
-        toast("Confirm SOLAX transfer in your wallet…", { critical: true });
-        const sig = await transferSolaxToBurnWallet(connection, signer, cost, held);
+        const held = {
+          account: new PublicKey(buildData.account),
+          balance: buildData.balance ?? resourcesRef.current.solax,
+        };
+        setResources((r) => ({ ...r, solax: Math.max(held.balance, r.solax) }));
 
-        let verified = await verifySolaxBurnTransfer(connection, sig, publicKey, cost);
+        toast("Confirm SOLAX transfer in your wallet…", { critical: true });
+        const tx = deserializeBurnTransaction(buildData.transaction);
+        const sig = await sendWalletTransaction(connection, signer, tx, {
+          blockhash: buildData.blockhash,
+          lastValidBlockHeight: buildData.lastValidBlockHeight,
+          preserveBlockhash: true,
+        });
+
+        let verified = await verifySolaxBurnTransfer(
+          connection,
+          sig,
+          publicKey,
+          cost,
+          held.account,
+        );
         if (!verified) {
           const res = await fetch("/api/verify-burn", {
             method: "POST",

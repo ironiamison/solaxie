@@ -7,7 +7,7 @@ import {
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
+  createTransferCheckedInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
@@ -16,7 +16,7 @@ import {
   TOKEN_PROGRAM_FOR_MINT,
 } from "@/utils/anchor";
 import { solaxPriceToBaseUnits } from "@/lib/token";
-import { findSolaxTokenAccount, resolveSolaxTokenAccount, type SolaxTokenAccount } from "@/lib/wallet-balance";
+import { findSolaxTokenAccount, type SolaxTokenAccount } from "@/lib/wallet-balance";
 import { sendWalletTransaction } from "@/lib/wallet-tx";
 import type { WalletContextState } from "@solana/wallet-adapter-react";
 
@@ -35,30 +35,24 @@ export function burnWalletAta(): PublicKey {
   );
 }
 
-/** Transfer pump.fun SOLAX to the burn wallet. */
-export async function transferSolaxToBurnWallet(
-  connection: Connection,
-  wallet: Pick<WalletContextState, "publicKey" | "sendTransaction" | "signTransaction">,
-  priceWhole: number,
-  sourceOverride?: SolaxTokenAccount,
-): Promise<TransactionSignature> {
-  const owner = wallet.publicKey;
-  if (!owner) throw new Error("Wallet not connected");
+export type BuiltBurnTx = {
+  transaction: Transaction;
+  blockhash: string;
+  lastValidBlockHeight: number;
+  source: PublicKey;
+  balance: number;
+};
 
+/** Build unsigned SOLAX → burn wallet transfer (Token-2022 / pump.fun safe). */
+export async function buildSolaxBurnTransaction(
+  connection: Connection,
+  owner: PublicKey,
+  priceWhole: number,
+  sourceAccount: PublicKey,
+): Promise<BuiltBurnTx> {
   const amount = solaxPriceToBaseUnits(priceWhole, TOKEN_DECIMALS);
   if (amount <= BigInt(0)) throw new Error("Invalid burn amount");
 
-  const sourceInfo = sourceOverride ?? (await resolveSolaxTokenAccount(connection, owner));
-  if (!sourceInfo) {
-    throw new Error("No SOLAX in wallet — buy SOLAX on pump.fun first");
-  }
-  if (sourceInfo.balance < priceWhole) {
-    throw new Error(
-      `Need ${priceWhole.toLocaleString()} SOLAX (you have ${Math.floor(sourceInfo.balance).toLocaleString()})`,
-    );
-  }
-
-  const source = sourceInfo.account;
   const destination = burnWalletAta();
   const tx = new Transaction();
 
@@ -77,17 +71,70 @@ export async function transferSolaxToBurnWallet(
   }
 
   tx.add(
-    createTransferInstruction(
-      source,
+    createTransferCheckedInstruction(
+      sourceAccount,
+      TOKEN_MINT,
       destination,
       owner,
       amount,
+      TOKEN_DECIMALS,
       [],
       TOKEN_PROGRAM_FOR_MINT,
     ),
   );
 
-  return sendWalletTransaction(connection, wallet, tx);
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+  tx.feePayer = owner;
+  tx.recentBlockhash = blockhash;
+
+  return {
+    transaction: tx,
+    blockhash,
+    lastValidBlockHeight,
+    source: sourceAccount,
+    balance: 0,
+  };
+}
+
+export function serializeBurnTransaction(tx: Transaction): string {
+  return Buffer.from(
+    tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
+  ).toString("base64");
+}
+
+export function deserializeBurnTransaction(encoded: string): Transaction {
+  return Transaction.from(Buffer.from(encoded, "base64"));
+}
+
+/** Transfer pump.fun SOLAX to the burn wallet. */
+export async function transferSolaxToBurnWallet(
+  connection: Connection,
+  wallet: Pick<WalletContextState, "publicKey" | "sendTransaction" | "signTransaction">,
+  priceWhole: number,
+  sourceOverride: SolaxTokenAccount,
+  built?: Pick<BuiltBurnTx, "blockhash" | "lastValidBlockHeight">,
+): Promise<TransactionSignature> {
+  const owner = wallet.publicKey;
+  if (!owner) throw new Error("Wallet not connected");
+
+  if (sourceOverride.balance < priceWhole) {
+    throw new Error(
+      `Need ${priceWhole.toLocaleString()} SOLAX (you have ${Math.floor(sourceOverride.balance).toLocaleString()})`,
+    );
+  }
+
+  const builtTx = await buildSolaxBurnTransaction(
+    connection,
+    owner,
+    priceWhole,
+    sourceOverride.account,
+  );
+
+  return sendWalletTransaction(connection, wallet, builtTx.transaction, {
+    blockhash: built?.blockhash ?? builtTx.blockhash,
+    lastValidBlockHeight: built?.lastValidBlockHeight ?? builtTx.lastValidBlockHeight,
+    preserveBlockhash: !!built,
+  });
 }
 
 /** Confirm a tx moved at least `priceWhole` SOLAX from `owner` toward the burn wallet. */
@@ -96,13 +143,16 @@ export async function verifySolaxBurnTransfer(
   signature: string,
   owner: PublicKey,
   priceWhole: number,
+  sourceAccount?: PublicKey,
 ): Promise<boolean> {
   const minRaw = solaxPriceToBaseUnits(priceWhole, TOKEN_DECIMALS);
   const mint = TOKEN_MINT.toBase58();
   const ownerStr = owner.toBase58();
   const burnAta = burnWalletAta().toBase58();
 
-  const sourceAta = (await findSolaxTokenAccount(connection, owner))?.account.toBase58();
+  const sourceAta =
+    sourceAccount?.toBase58() ??
+    (await findSolaxTokenAccount(connection, owner))?.account.toBase58();
 
   for (let attempt = 0; attempt < 4; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));

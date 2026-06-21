@@ -123,12 +123,13 @@ export async function resolveSolaxTokenAccount(
   connection: Connection,
   owner: PublicKey,
 ): Promise<SolaxTokenAccount | null> {
-  const local = await findSolaxTokenAccount(connection, owner).catch(() => null);
-
   let remote: SolaxTokenAccount | null = null;
   if (typeof fetch !== "undefined") {
     try {
-      const res = await fetch(`/api/solax-account?wallet=${owner.toBase58()}`, { cache: "no-store" });
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const res = await fetch(`${origin}/api/solax-account?wallet=${owner.toBase58()}`, {
+        cache: "no-store",
+      });
       if (res.ok) {
         const data = (await res.json()) as { account?: string; balance?: number };
         if (data.account && typeof data.balance === "number" && data.balance > 0) {
@@ -136,12 +137,11 @@ export async function resolveSolaxTokenAccount(
         }
       }
     } catch {
-      // API optional
+      // optional
     }
   }
 
-  if (local && remote) {
-    return local.balance >= remote.balance ? local : remote;
-  }
-  return local ?? remote;
+  if (remote) return remote;
+
+  return findSolaxTokenAccount(connection, owner).catch(() => null);
 }
