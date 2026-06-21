@@ -1,5 +1,6 @@
 import type { Axol } from "./game";
 import type { AvatarId, TrainerProfile } from "./profile";
+import { trainerXpToNext } from "./progression";
 
 /** Public snapshot synced to the global registry (all players). */
 export type PublicPlayer = {
@@ -98,5 +99,26 @@ export function toPublicPlayer(payload: PlayerSyncPayload): PublicPlayer {
     axols: payload.axols.slice(0, 40),
     activeId: payload.activeId,
     updatedAt: Date.now(),
+  };
+}
+
+/** Rebuild trainer profile when only the public registry snapshot exists. */
+export function trainerProfileFromPublic(p: PublicPlayer): TrainerProfile {
+  return {
+    name: p.name,
+    empireName: p.empireName,
+    avatarId: p.avatarId,
+    level: p.level,
+    xp: 0,
+    xpToNext: trainerXpToNext(p.level),
+    league: p.league,
+    trophies: p.trophies,
+    leagueMax: 1600,
+    rank: p.rank,
+    activityTickets: p.activityTickets ?? 0,
+    chestWins: 0,
+    chestTarget: 10,
+    chestLevel: 1,
+    usernameSet: true,
   };
 }

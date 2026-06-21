@@ -46,6 +46,7 @@ import type { CloudSave } from "@/lib/cloud-save-store";
 import { fetchGlobalFeed, postGlobalFeed } from "@/lib/global-feed";
 import { recordEconomy as postEconomyStats } from "@/lib/global-stats";
 import { fetchPublicPlayer, syncPublicPlayer } from "@/lib/global-players";
+import { trainerProfileFromPublic } from "@/lib/public-player";
 import { sfx } from "@/lib/sfx";
 import { BreedModal, UsernameModal } from "@/components/world/modals";
 import { SpendBurnMeter } from "@/components/world/SpendBurnMeter";
@@ -383,7 +384,10 @@ export default function World() {
         fetchPublicPlayer(walletAddress).catch(() => null),
       ]);
 
-      const metaProfile = cloud?.profile ?? walletSave?.profile ?? { ...STARTER_PROFILE };
+      const metaProfile =
+        cloud?.profile ??
+        walletSave?.profile ??
+        (publicPlayer ? trainerProfileFromPublic(publicPlayer) : { ...STARTER_PROFILE });
       const metaQuestsRaw = cloud?.quests ?? walletSave?.quests ?? { rolls: 0, breeds: 0, wins: 0 };
       const day = utcDayKey();
       const metaQuests: Quests =
