@@ -1,0 +1,19 @@
+{
+  "name": "Solana games preset",
+  "version": "1.0.0",
+  "description": "An example game using sesison keys with anchor program, js web and unity client",
+  "logo": "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png",
+  "project_url": "https://github.com/solana-developers/solana-game-preset",
+  "contacts": [
+    "https://twitter.com/solplay_jonas",
+    "https://github.com/Woody4618",
+    "Discord: jonashahn",
+    "Email: jonas.hahn@solana.org"
+  ],
+  "source_code": "https://github.com/solana-developers/solana-game-preset",
+  "source_release": "v1.0.0",
+  "preferred_languages": ["Rust", "C#", "TypeScript"],
+  "acknowledgements": "Thanks to everybody",
+  "expiry": "2025-12-31",
+  "notification": "There is currently a little bug in the unity client because the fees function needs to be updates. Just replace it with 5000 for now!"
+}
