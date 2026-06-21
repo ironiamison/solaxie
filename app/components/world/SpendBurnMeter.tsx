@@ -124,7 +124,7 @@ export function SpendBurnMeter({ variant = "sidebar" }: { variant?: "sidebar" | 
         compact
       />
       <p className="mt-1.5 text-[0.52rem] leading-snug text-white/40">
-        Pay-to-play burns reduce supply. Tickets accrue now; season creator-reward payouts go live with SOLAX launch.
+        Play and earn activity tickets. Season creator-reward payouts go live with SOLAX launch.
       </p>
 
       <div className="mt-2.5 space-y-1.5 border-t border-white/8 pt-2.5">

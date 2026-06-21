@@ -111,7 +111,7 @@ export function ConnectWalletModal({ open, onClose, onError }: Props) {
         </button>
         <h1 className="wallet-adapter-modal-title">Connect a wallet on Solana to continue</h1>
         <p className="wallet-adapter-modal-subtitle mb-4 text-center text-sm text-white/55">
-          Pay-to-play: buy SOLAX on pump.fun, burn to progress, earn activity tickets for creator rewards.
+          Play and earn activity tickets for creator rewards.
         </p>
         <ul className="wallet-adapter-modal-list">
           {sorted.map((w) => (

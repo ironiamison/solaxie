@@ -397,7 +397,7 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
         <img src="/logo.png" alt="Solaxie" className="h-9 object-contain" />
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-lg font-extrabold text-white">Solaxie Tutorial</h1>
-          <p className="truncate text-[0.62rem] text-white/50">Pay-to-play · Burn SOLAX · Earn activity tickets</p>
+          <p className="truncate text-[0.62rem] text-white/50">Play and earn activity tickets</p>
         </div>
         <TwitterLink />
         <ProfileDropdown world={world} />
