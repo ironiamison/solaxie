@@ -49,4 +49,6 @@ export type WorldApi = {
   buyEnergy: (blocks: number) => boolean;
   setActive: (id: number) => void;
   toast: (msg: string) => void;
+  /** Track global spend/burn totals (off-chain; on-chain shop uses vault balance). */
+  recordEconomy: (spent: number, burned?: number) => void;
 };

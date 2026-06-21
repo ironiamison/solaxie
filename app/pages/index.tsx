@@ -39,8 +39,10 @@ import {
 } from "@/lib/save";
 import { createChainClient } from "@/lib/chain";
 import { fetchGlobalFeed, postGlobalFeed } from "@/lib/global-feed";
+import { recordEconomy as postEconomyStats } from "@/lib/global-stats";
 import { sfx } from "@/lib/sfx";
 import { BreedModal, UsernameModal } from "@/components/world/modals";
+import { SpendBurnMeter } from "@/components/world/SpendBurnMeter";
 import Atmosphere from "@/components/world/Atmosphere";
 import type { Screen, WorldApi } from "@/components/world/world";
 import CollectionScreen from "@/components/world/screens/CollectionScreen";
@@ -311,6 +313,12 @@ export default function World() {
     void postGlobalFeed({ who, what, color, wallet: walletFull ?? undefined });
   }, [walletFull]);
 
+  const recordEconomy = useCallback((spent: number, burned?: number) => {
+    const b = burned ?? spent;
+    if (spent <= 0 && b <= 0) return;
+    void postEconomyStats({ spent, burned: b });
+  }, []);
+
   const pushFeed = announceFeed;
 
   const requireWallet = () => {
@@ -338,6 +346,7 @@ export default function World() {
     if (!rolled) return null;
     setAxols((list) => [...list, rolled!]);
     setQuests((q) => ({ ...q, rolls: q.rolls + 1 }));
+    if (COSTS.roll.solax > 0) recordEconomy(COSTS.roll.solax, COSTS.roll.solax);
     pushFeed(`rolled a ${rolled!.rarity} ${CLASS_META[rolled!.cls].name}!`, CLASS_META[rolled!.cls].color);
     return rolled;
   };
@@ -355,6 +364,7 @@ export default function World() {
     setAxols((list) => [...list.map((x) => (x.id === aId || x.id === bId ? { ...x, breedCount: x.breedCount + 1 } : x)), child]);
     setSelectedId(child.id);
     setQuests((q) => ({ ...q, breeds: q.breeds + 1 }));
+    recordEconomy(solaxCost, solaxCost);
     pushFeed(`hatched a Gen ${child.generation} ${CLASS_META[child.cls].name}!`, CLASS_META[child.cls].color);
     return child;
   };
@@ -415,6 +425,7 @@ export default function World() {
     } else if (price > 0) {
       if (resources.solax < price) return false;
       setResources((r) => ({ ...r, solax: r.solax - price }));
+      recordEconomy(price, price);
     }
 
     if (reward) {
@@ -447,6 +458,7 @@ export default function World() {
     const gain = blocks * ENERGY_REFILL.perBlock;
     if (resources.solax < cost || blocks <= 0) return false;
     setResources((r) => ({ ...r, solax: r.solax - cost, energy: Math.min(r.maxEnergy, r.energy + gain) }));
+    recordEconomy(cost, cost);
     announceFeed(`refilled ${gain} energy`, "#ffd24a");
     return true;
   };
@@ -468,6 +480,7 @@ export default function World() {
         return { ...x, xp, level };
       })
     );
+    recordEconomy(cost, cost);
     announceFeed(`fed ${CLASS_META[a.cls].name} #${a.id}`, CLASS_META[a.cls].color);
     return true;
   };
@@ -495,6 +508,7 @@ export default function World() {
           : x
       )
     );
+    recordEconomy(cost, cost);
     announceFeed(`powered up ${CLASS_META[a.cls].name} #${a.id} to Lv.${a.level + 1}!`, CLASS_META[a.cls].color);
     return true;
   };
@@ -589,6 +603,7 @@ export default function World() {
     buyEnergy,
     setActive: setActiveId,
     toast,
+    recordEconomy,
   };
 
   const onBuilding = (t: Target) => (t === "breed" ? setBreedOpen(true) : setScreen(t));
@@ -668,6 +683,8 @@ export default function World() {
           <aside className="absolute bottom-24 left-3 z-20 hidden w-72 md:block">
             <FeedCard feed={feed} />
           </aside>
+
+          <SpendBurnMeter />
         </main>
       ) : (
         <div className="fixed inset-0 z-40 overflow-y-auto">
