@@ -52,7 +52,7 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
           </p>
           <ul className="mt-3 list-inside list-disc space-y-1.5 text-white/70">
             <li>Disconnected = tutorial only. You cannot roll, breed, battle, or shop.</li>
-            <li>Connected = full access — buy SOLAX on pump.fun, burn to play, stack activity tickets for creator-reward share.</li>
+            <li>Connected = full access — buy SOLAX on pump.fun, stack activity tickets for creator-reward share.</li>
             <li>Progress saves to cloud + your wallet — Solaxies are on-chain PDAs, profile data syncs via Vercel.</li>
           </ul>
           <button
