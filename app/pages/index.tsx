@@ -641,7 +641,19 @@ export default function World() {
     }
 
     let rolled: Axol | null = null;
-    if (!(await burnAndRefresh(COSTS.roll.solax))) return null;
+    if (resources.dna < COSTS.roll.dna) {
+      toast("Not enough DNA");
+      return null;
+    }
+    if (resources.energy < COSTS.roll.energy) {
+      toast("Out of energy — refill below to keep spinning");
+      return null;
+    }
+    setResources((r) => ({
+      ...r,
+      dna: r.dna - COSTS.roll.dna,
+      energy: r.energy - COSTS.roll.energy,
+    }));
     rolled = withCosmetic(randomAxol({ rarity: rollRarity(_luck) }));
     if (!rolled) return null;
     setAxols((list) => [...list, rolled!]);

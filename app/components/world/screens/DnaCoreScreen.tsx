@@ -79,11 +79,13 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
         return;
       }
     } else {
-      if (world.resources.dna < 1) {
-        world.toast("Not enough DNA");
+      const dnaNeed = count * COSTS.roll.dna;
+      const energyNeed = count * COSTS.roll.energy;
+      if (world.resources.dna < dnaNeed) {
+        world.toast(`Need ${dnaNeed} DNA to spin`);
         return;
       }
-      if (world.resources.energy < 10) {
+      if (world.resources.energy < energyNeed) {
         world.toast("Out of energy — refill below to keep spinning");
         return;
       }
@@ -103,7 +105,7 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
     if (wait) await delay(wait);
     if (got.length === 0) {
       setPhase("idle");
-      world.toast(world.chainReady ? "Mint failed or cancelled" : "Not enough DNA");
+      world.toast(world.chainReady ? "Mint failed or cancelled" : "Spin failed — try again");
       return;
     }
     const best = got.reduce((a, b) => (RARITY_META[b.rarity].stars > RARITY_META[a.rarity].stars ? b : a), got[0]);
@@ -247,7 +249,7 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
               <p className="mt-1.5 text-center text-[0.64rem] font-semibold text-amber-300">
                 On-chain mint · {COSTS.roll.solax.toLocaleString()} SOLAX per Solaxy · energy from your player account
               </p>
-            ) : world.resources.energy < 10 ? (
+            ) : world.resources.energy < COSTS.roll.energy ? (
               <p className="mt-1.5 text-center text-[0.64rem] font-semibold text-amber-300">Out of energy — refill to keep spinning (100k SOLAX per 10 energy).</p>
             ) : null}
           </div>
@@ -256,7 +258,7 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
           <div className="mt-3 flex w-full max-w-xl gap-3 overflow-visible px-2 pt-2">
             <button
               onClick={() => spin(1)}
-              disabled={phase === "charging" || (!world.chainReady && world.resources.energy < 10)}
+              disabled={phase === "charging" || (!world.chainReady && world.resources.energy < COSTS.roll.energy)}
               className="group relative flex flex-1 flex-col items-center rounded-3xl bg-gradient-to-b from-[#3aa0ff] to-[#1f6fd6] py-3 font-display font-extrabold text-white shadow-[0_10px_30px_rgba(31,111,214,0.5)] transition hover:-translate-y-0.5 disabled:opacity-60"
             >
               <span className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
@@ -273,7 +275,7 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
             </button>
             <button
               onClick={() => spin(10)}
-              disabled={phase === "charging" || (!world.chainReady && world.resources.energy < 10)}
+              disabled={phase === "charging" || (!world.chainReady && (world.resources.energy < COSTS.roll.energy * 10 || world.resources.dna < COSTS.roll.dna * 10))}
               className="group relative flex flex-1 flex-col items-center rounded-3xl bg-gradient-to-b from-[#ffb340] to-[#ff8a1f] py-3 font-display font-extrabold text-white shadow-[0_10px_30px_rgba(255,138,31,0.5)] transition hover:-translate-y-0.5 disabled:opacity-60"
             >
               <span className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
