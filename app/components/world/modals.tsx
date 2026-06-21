@@ -97,7 +97,7 @@ export function RollModal({
 }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Axol | null>(null);
-  const afford = resources.solax >= COSTS.roll.solax && resources.dna >= COSTS.roll.dna;
+  const afford = resources.dna >= COSTS.roll.dna && (resources.energy >= COSTS.roll.energy || resources.solax >= COSTS.roll.solax);
 
   const roll = async () => {
     setLoading(true);
@@ -126,7 +126,7 @@ export function RollModal({
             <img src="/icons/dna.png" alt="" className="h-24 w-24" />
           </div>
           <p className="text-center text-sm text-white/60">
-            Each roll costs <b className="text-white">{COSTS.roll.solax} SOLAX</b> + <b className="text-white">{COSTS.roll.dna} DNA</b> and yields a random class & rarity.
+            Each spin costs <b className="text-white">{COSTS.roll.dna} DNA</b> + <b className="text-white">{COSTS.roll.energy} energy</b> (or <b className="text-white">{COSTS.roll.solax.toLocaleString()} SOLAX</b> on-chain mint).
           </p>
           <PrimaryButton variant="purple" onClick={roll} loading={loading} disabled={!afford} className="px-10 text-lg">
             {afford ? (
@@ -186,7 +186,7 @@ export function BreedModal({
 }: {
   axols: Axol[];
   resources: Resources;
-  onBreed: (a: number, b: number, extraFee?: number) => Promise<Axol | null>;
+  onBreed: (a: number, b: number, solaxCost?: number) => Promise<Axol | null>;
   onClose: () => void;
 }) {
   const breedable = axols.filter((a) => a.breedCount < a.maxBreedCount);
@@ -210,8 +210,10 @@ export function BreedModal({
   const ready = !!parentA && !!parentB && parentA.id !== parentB.id;
 
   const overLimit = breedsUsed >= FREE_BREEDS;
-  const solaxCost = overLimit ? OVERRIDE_COST : COSTS.breed.solax;
-  const afford = resources.solax >= solaxCost && resources.eggs >= COSTS.breed.eggs;
+  const solaxCost = overLimit ? OVERRIDE_COST : 0;
+  const afford = overLimit
+    ? resources.solax >= OVERRIDE_COST && resources.eggs >= COSTS.breed.eggs
+    : resources.eggs >= COSTS.breed.eggs;
   const resetMs = breedResetInMs();
   const canBreed = ready && afford && phase === "idle";
 
@@ -238,9 +240,7 @@ export function BreedModal({
     timers.current.push(setTimeout(() => sfx.eggCrack(1), 980));
     timers.current.push(setTimeout(() => sfx.eggCrack(2), 1240));
 
-    // Over the free limit → the override fee replaces the base SOLAX cost.
-    const extraFee = overLimit ? OVERRIDE_COST - COSTS.breed.solax : 0;
-    const c = await onBreed(parentA.id, parentB.id, extraFee);
+    const c = await onBreed(parentA.id, parentB.id, solaxCost);
     if (!c) { setPhase("idle"); return; }
 
     timers.current.push(
@@ -517,13 +517,16 @@ function BreedingCore({
           <span className="text-[0.54rem] font-extrabold uppercase tracking-[0.16em] text-white/40">{overLimit ? "Unlock" : "Cost"}</span>
           <span className="flex items-center gap-1.5">
             <img src="/icons/coin.png" alt="" className="h-5 w-5" />
-            <b className="font-display text-[0.95rem]" style={{ color: overLimit ? "#ffd24a" : "#fff" }}>{solaxCost.toLocaleString()}</b>
-            <span className="text-[0.6rem] font-bold uppercase tracking-wide text-white/45">SOLAX</span>
+            <b className="font-display text-[0.95rem]" style={{ color: overLimit ? "#ffd24a" : "#fff" }}>
+              {overLimit ? solaxCost.toLocaleString() : "FREE"}
+            </b>
+            {overLimit ? <span className="text-[0.6rem] font-bold uppercase tracking-wide text-white/45">SOLAX</span> : null}
           </span>
           <span className="text-white/25">+</span>
           <span className="flex items-center gap-1.5">
             <img src="/icons/egg.png" alt="" className="h-5 w-5" />
             <b className="font-display text-[0.95rem] text-white">{COSTS.breed.eggs}</b>
+            <span className="text-[0.6rem] font-bold uppercase tracking-wide text-white/45">egg</span>
           </span>
         </div>
         <button
@@ -548,8 +551,8 @@ function BreedingCore({
       <p className={`mt-2.5 text-center text-[0.7rem] font-semibold ${!afford ? "text-rose-300" : overLimit ? "text-amber-300" : "text-white/45"}`}>
         {!afford
           ? overLimit
-            ? `Need ${OVERRIDE_COST.toLocaleString()} SOLAX to breed again.`
-            : "Not enough SOLAX or eggs to breed."
+            ? `Need ${OVERRIDE_COST.toLocaleString()} SOLAX and 1 egg to breed again.`
+            : "Need 1 egg to breed."
           : overLimit
           ? `Free breeds used — pay ${OVERRIDE_COST.toLocaleString()} SOLAX to breed now. Free breeds reset in ${fmtCountdown(resetMs)}.`
           : `${FREE_BREEDS - breedsUsed} free breed(s) left · resets in ${fmtCountdown(resetMs)}.`}

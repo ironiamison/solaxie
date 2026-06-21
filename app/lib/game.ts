@@ -216,7 +216,7 @@ export type Resources = {
 export const COSTS = {
   /** On-chain mint uses solax; off-chain DNA Core spin uses dna + energy. */
   roll: { solax: 100_000, dna: 1, energy: 10 },
-  breed: { solax: 150_000, eggs: 0 },
+  breed: { solax: 150_000, eggs: 1 },
   battle: { energy: 10 },
 };
 

@@ -40,7 +40,7 @@ export type WorldApi = {
   openBreed: () => void;
 
   doRoll: (luck?: number) => Promise<Axol | null>;
-  doBreed: (a: number, b: number, extraFee?: number) => Promise<Axol | null>;
+  doBreed: (a: number, b: number, solaxCost?: number) => Promise<Axol | null>;
   doBattle: (myId: number, enemy?: Axol) => Promise<{ mine: Axol; enemy: Axol; result: BattleResult } | null>;
 
   /** Visit another trainer's public Empire Hall. */

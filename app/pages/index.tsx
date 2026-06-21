@@ -76,10 +76,28 @@ import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile
 import { STARTER_PROFILE, needsUsername, normalizeProfile, formatTrainerName } from "@/lib/profile";
 import { applyLaunchAirdrop } from "@/lib/airdrops";
 import { fetchWalletSolaxBalance } from "@/lib/wallet-balance";
+import { PublicKey, type Connection } from "@solana/web3.js";
+import {
+  applyProgressEvent,
+  applySolaxyLevelUps,
   dailyQuestsComplete,
   utcDayKey,
   type ProgressEvent,
 } from "@/lib/progression";
+
+/** Prefer server-side RPC (Helius on Vercel); fall back to browser connection. */
+async function readSolaxBalance(connection: Connection, owner: PublicKey): Promise<number> {
+  try {
+    const res = await fetch(`/api/balance?wallet=${owner.toBase58()}`, { cache: "no-store" });
+    if (res.ok) {
+      const data = (await res.json()) as { solax?: number };
+      if (typeof data.solax === "number") return data.solax;
+    }
+  } catch {
+    // fall through to client RPC
+  }
+  return fetchWalletSolaxBalance(connection, owner);
+}
 
 type Target = Screen | "breed";
 
@@ -412,7 +430,7 @@ export default function World() {
       }
 
       if (publicKey) {
-        const solax = await fetchWalletSolaxBalance(connection, publicKey);
+        const solax = await readSolaxBalance(connection, publicKey);
         resourcesDraft = { ...resourcesDraft, solax };
       }
 
@@ -526,7 +544,7 @@ export default function World() {
     if (!mounted || !publicKey) return;
     let cancelled = false;
     const syncBal = () => {
-      void fetchWalletSolaxBalance(connection, publicKey).then((solax) => {
+      void readSolaxBalance(connection, publicKey).then((solax) => {
         if (!cancelled) setResources((r) => ({ ...r, solax }));
       });
     };
@@ -658,16 +676,21 @@ export default function World() {
     if (!rolled) return null;
     setAxols((list) => [...list, rolled!]);
     bumpQuest("rolls");
-    grantProgression("hatch", COSTS.roll.solax);
+    grantProgression("hatch");
     pushFeed(`rolled a ${rolled!.rarity} ${CLASS_META[rolled!.cls].name}!`, CLASS_META[rolled!.cls].color);
     return rolled;
   };
 
-  const doBreed = async (aId: number, bId: number, _extraFee = 0): Promise<Axol | null> => {
+  const doBreed = async (aId: number, bId: number, solaxCost = 0): Promise<Axol | null> => {
     if (!requireWallet()) return null;
     const a = axols.find((x) => x.id === aId);
     const b = axols.find((x) => x.id === bId);
     if (!a || !b) return null;
+
+    if (resources.eggs < COSTS.breed.eggs) {
+      toast("Need 1 egg to breed");
+      return null;
+    }
 
     if (chainClient && chainReady) {
       if (resources.energy < ON_CHAIN_COSTS.breedEnergy) {
@@ -691,10 +714,9 @@ export default function World() {
       }
     }
 
-    const solaxCost = COSTS.breed.solax + _extraFee;
-    if (!(await burnAndRefresh(solaxCost)) || resources.eggs < 1) return null;
+    if (solaxCost > 0 && !(await burnAndRefresh(solaxCost))) return null;
     const child = breedAxol(a, b);
-    setResources((r) => ({ ...r, eggs: r.eggs - 1 }));
+    setResources((r) => ({ ...r, eggs: r.eggs - COSTS.breed.eggs }));
     setAxols((list) => [...list.map((x) => (x.id === aId || x.id === bId ? { ...x, breedCount: x.breedCount + 1 } : x)), child]);
     setSelectedId(child.id);
     bumpQuest("breeds");
@@ -710,7 +732,10 @@ export default function World() {
     const enemy = enemyOverride ?? wildAxol(mine);
 
     if (chainClient && chainReady) {
-      if (resources.energy < COSTS.battle.energy) return null;
+      if (resources.energy < COSTS.battle.energy) {
+        toast(`Need ${COSTS.battle.energy} energy to battle`);
+        return null;
+      }
       const opponentOnChain = await chainClient.fetchAxolExists(enemy.id);
       if (opponentOnChain) {
         toast("Confirm battle in your wallet…");
@@ -738,7 +763,10 @@ export default function World() {
       toast("Practice battle — wild Solaxy (not on-chain yet).");
     }
 
-    if (resources.energy < COSTS.battle.energy) return null;
+    if (resources.energy < COSTS.battle.energy) {
+      toast(`Need ${COSTS.battle.energy} energy to battle`);
+      return null;
+    }
     const result: BattleResult = resolveBattle(mine, enemy);
     const gain = solaxyXpGain(mine, result.rewardXp);
     setResources((r) => ({
