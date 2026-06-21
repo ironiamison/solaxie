@@ -2,7 +2,6 @@ import { AnchorProvider, BN } from "@coral-xyz/anchor";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
-  createBurnInstruction,
 } from "@solana/spl-token";
 import {
   Connection,
@@ -22,7 +21,7 @@ import {
   type PlayerData,
 } from "@/utils/anchor";
 import { fetchWalletSolaxBalance } from "@/lib/wallet-balance";
-import { solaxPriceToBaseUnits } from "@/lib/token";
+import { transferSolaxToBurnWallet, verifySolaxBurnTransfer } from "@/lib/solax-burn";
 import { chainAxolToUi } from "@/lib/chain-mapper";
 import type { Axol } from "@/lib/game";
 
@@ -41,7 +40,7 @@ export type ChainClient = {
   fetchOwnedAxols: () => Promise<Axol[]>;
   fetchAxolExists: (id: number) => Promise<boolean>;
   ensurePlayer: (name: string) => Promise<void>;
-  /** Burn pump.fun SOLAX from the connected wallet (permanent supply reduction). */
+  /** Send SOLAX to the public burn wallet and verify the transfer. */
   burnSolax: (priceWhole: number) => Promise<string>;
   mintAxol: () => Promise<{ sig: string; axol: Axol }>;
   breed: (parentAId: number, parentBId: number) => Promise<{ sig: string; child: Axol }>;
@@ -126,13 +125,15 @@ export function createChainClient(
   }
 
   async function burnSolax(priceWhole: number): Promise<string> {
-    const amount = solaxPriceToBaseUnits(priceWhole, TOKEN_DECIMALS);
-    if (amount <= BigInt(0)) throw new Error("Invalid burn amount");
-    const tx = new Transaction();
-    const ata = await addAtaIfNeeded(tx);
-    tx.add(createBurnInstruction(TOKEN_MINT, ata, owner, amount, [], TOKEN_PROGRAM_FOR_MINT));
-    const sig = await provider.sendAndConfirm(tx, [], { commitment: "confirmed" });
-    console.info("[chain] burn", priceWhole, sig);
+    const sig = await transferSolaxToBurnWallet(
+      connection,
+      owner,
+      (tx) => provider.sendAndConfirm(tx, [], { commitment: "confirmed" }),
+      priceWhole,
+    );
+    const ok = await verifySolaxBurnTransfer(connection, sig, owner, priceWhole);
+    if (!ok) throw new Error("SOLAX burn transfer could not be verified");
+    console.info("[chain] burn transfer", priceWhole, sig);
     return sig;
   }
 

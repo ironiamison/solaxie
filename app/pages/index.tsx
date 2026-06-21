@@ -75,6 +75,10 @@ import { ProfileDropdown } from "@/components/world/ProfileDropdown";
 import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile";
 import { STARTER_PROFILE, needsUsername, normalizeProfile, formatTrainerName } from "@/lib/profile";
 import { applyLaunchAirdrop } from "@/lib/airdrops";
+import {
+  transferSolaxToBurnWallet,
+  verifySolaxBurnTransfer,
+} from "@/lib/solax-burn";
 import { fetchWalletSolaxBalance } from "@/lib/wallet-balance";
 import { PublicKey, type Connection } from "@solana/web3.js";
 import {
@@ -190,6 +194,7 @@ export default function World() {
     connecting,
     connect,
     disconnect,
+    sendTransaction,
     wallet: adapterWallet,
   } = useWallet();
   const walletAddress = publicKey?.toBase58() ?? null;
@@ -610,18 +615,45 @@ export default function World() {
     }));
   }, [chainClient]);
 
-  /** Burn real pump.fun SOLAX from wallet, then refresh displayed balance. */
+  /** Transfer SOLAX to burn wallet, verify on-chain, refresh balance. */
   const burnAndRefresh = useCallback(
     async (cost: number): Promise<boolean> => {
-      if (!chainClient || !requireWallet()) return false;
+      if (!requireWallet() || !publicKey || !sendTransaction) {
+        toast("Connect wallet to spend SOLAX");
+        return false;
+      }
       if (resources.solax < cost) {
         toast(`Need ${cost.toLocaleString()} SOLAX in wallet`);
         return false;
       }
       try {
-        toast("Confirm burn in your wallet…");
-        await chainClient.burnSolax(cost);
-        await applyChainState();
+        toast("Confirm SOLAX transfer in your wallet…");
+        const sig = await transferSolaxToBurnWallet(
+          connection,
+          publicKey,
+          (tx) => sendTransaction(tx, connection),
+          cost,
+        );
+
+        let verified = await verifySolaxBurnTransfer(connection, sig, publicKey, cost);
+        if (!verified) {
+          const res = await fetch("/api/verify-burn", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ signature: sig, wallet: publicKey.toBase58(), amount: cost }),
+          });
+          if (res.ok) {
+            const data = (await res.json()) as { verified?: boolean };
+            verified = !!data.verified;
+          }
+        }
+        if (!verified) {
+          toast("Transfer could not be verified — contact support with your tx signature.");
+          return false;
+        }
+
+        const solax = await readSolaxBalance(connection, publicKey);
+        setResources((r) => ({ ...r, solax }));
         recordEconomy(cost);
         return true;
       } catch (e) {
@@ -630,7 +662,7 @@ export default function World() {
         return false;
       }
     },
-    [chainClient, resources.solax, toast, applyChainState, recordEconomy],
+    [connection, publicKey, sendTransaction, resources.solax, toast, recordEconomy, requireWallet],
   );
 
   const doRoll = async (_luck = 0): Promise<Axol | null> => {
@@ -796,10 +828,6 @@ export default function World() {
     if (!requireWallet()) return false;
 
     if (price > 0) {
-      if (!chainClient) {
-        toast("Wallet not ready — reconnect and try again.");
-        return false;
-      }
       setPurchasing(true);
       try {
         if (!(await burnAndRefresh(price))) return false;
