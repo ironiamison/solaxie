@@ -84,7 +84,7 @@ import {
   transferSolaxToBurnWallet,
   verifySolaxBurnTransfer,
 } from "@/lib/solax-burn";
-import { fetchWalletSolaxBalance } from "@/lib/wallet-balance";
+import { fetchWalletSolaxBalance, findSolaxTokenAccount } from "@/lib/wallet-balance";
 import { PublicKey, type Connection } from "@solana/web3.js";
 import {
   applyProgressEvent,
@@ -94,18 +94,29 @@ import {
   type ProgressEvent,
 } from "@/lib/progression";
 
-/** Prefer server + client RPC; take the higher balance (fixes Token-2022 / rate-limit glitches). */
-async function readSolaxBalance(connection: Connection, owner: PublicKey): Promise<number> {
-  const wallet = owner.toBase58();
-  const [apiBal, clientBal] = await Promise.all([
-    fetch(`/api/balance?wallet=${wallet}`, { cache: "no-store" })
-      .then(async (res) => (res.ok ? ((await res.json()) as { solax?: number }) : null))
-      .catch(() => null),
-    fetchWalletSolaxBalance(connection, owner).catch(() => 0),
-  ]);
-  const fromApi = typeof apiBal?.solax === "number" ? apiBal.solax : 0;
-  const fromClient = typeof clientBal === "number" ? clientBal : 0;
-  return Math.max(fromApi, fromClient);
+/** On-chain SOLAX read via the connected wallet RPC (most reliable in-browser). */
+async function readOnChainSolax(connection: Connection, owner: PublicKey): Promise<number> {
+  return fetchWalletSolaxBalance(connection, owner).catch(() => 0);
+}
+
+/** HUD balance — wallet RPC first; API backup; never trust a zero over a known positive balance. */
+async function readSolaxBalance(
+  connection: Connection,
+  owner: PublicKey,
+  floor = 0,
+): Promise<number> {
+  const clientBal = await readOnChainSolax(connection, owner);
+  let fromApi = 0;
+  try {
+    const res = await fetch(`/api/balance?wallet=${owner.toBase58()}`, { cache: "no-store" });
+    if (res.ok) {
+      const data = (await res.json()) as { solax?: number };
+      if (typeof data.solax === "number") fromApi = data.solax;
+    }
+  } catch {
+    // API optional
+  }
+  return Math.max(clientBal, fromApi, floor);
 }
 
 function pickMostAxols(...lists: (Axol[] | undefined)[]): Axol[] {
@@ -628,7 +639,7 @@ export default function World() {
     if (!mounted || !publicKey) return;
     let cancelled = false;
     const syncBal = () => {
-      void readSolaxBalance(connection, publicKey).then((solax) => {
+      void readSolaxBalance(connection, publicKey, resourcesRef.current.solax).then((solax) => {
         if (!cancelled) setResources((r) => ({ ...r, solax }));
       });
     };
@@ -687,18 +698,18 @@ export default function World() {
 
   const refreshSolax = useCallback(async (): Promise<number> => {
     if (!publicKey) return resourcesRef.current.solax;
-    const solax = await readSolaxBalance(connection, publicKey);
+    const solax = await readSolaxBalance(connection, publicKey, resourcesRef.current.solax);
     setResources((r) => ({ ...r, solax }));
     return solax;
   }, [connection, publicKey]);
 
   const requireWallet = () => {
     if (!wallet) {
-      toast("Link your wallet to play.");
+      toast("Link your wallet to play.", { critical: true });
       return false;
     }
     if (needsUsername(profileRef.current)) {
-      toast("Pick a trainer name first.");
+      toast("Pick a trainer name first.", { critical: true });
       return false;
     }
     return true;
@@ -725,19 +736,34 @@ export default function World() {
       }
       const signer = walletSigner();
       if (!signer.sendTransaction && !signer.signTransaction) {
-        toast("Wallet cannot sign transactions — reconnect Phantom", { critical: true });
+        toast("Wallet cannot sign transactions — reconnect your wallet", { critical: true });
         return false;
       }
       try {
-        const freshBal = await readSolaxBalance(connection, publicKey);
-        const displayBal = Math.max(freshBal, resourcesRef.current.solax);
+        const held = await findSolaxTokenAccount(connection, publicKey);
+        const chainBal = held?.balance ?? 0;
+        const displayBal = Math.max(chainBal, resourcesRef.current.solax);
         setResources((r) => ({ ...r, solax: displayBal }));
-        if (displayBal < cost) {
+
+        if (chainBal > 0 && chainBal < cost) {
           toast(
-            `Need ${cost.toLocaleString()} SOLAX in wallet (you have ${Math.floor(displayBal).toLocaleString()})`,
+            `Need ${cost.toLocaleString()} SOLAX in wallet (you have ${Math.floor(chainBal).toLocaleString()})`,
             { critical: true },
           );
           return false;
+        }
+        if (chainBal <= 0 && displayBal < cost) {
+          toast("Checking wallet… try again in a moment.", { critical: true });
+          const retry = await findSolaxTokenAccount(connection, publicKey);
+          if (!retry || retry.balance < cost) {
+            toast(
+              retry
+                ? `Need ${cost.toLocaleString()} SOLAX (you have ${Math.floor(retry.balance).toLocaleString()})`
+                : "No SOLAX found — buy on pump.fun first",
+              { critical: true },
+            );
+            return false;
+          }
         }
 
         toast("Confirm SOLAX transfer in your wallet…", { critical: true });
@@ -760,7 +786,7 @@ export default function World() {
         }
 
         const solax = await readSolaxBalance(connection, publicKey);
-        setResources((r) => ({ ...r, solax }));
+        setResources((r) => ({ ...r, solax: solax > 0 ? solax : Math.max(0, r.solax - cost) }));
         recordEconomy(cost);
         return true;
       } catch (e) {
@@ -776,12 +802,11 @@ export default function World() {
   const doRoll = async (_luck = 0): Promise<Axol | null> => {
     if (!requireWallet()) return null;
 
-    if (chainClient && chainReady) {
-      if (resources.solax < COSTS.roll.solax) {
-        toast(`Need ${COSTS.roll.solax.toLocaleString()} SOLAX in wallet to mint.`);
-        return null;
-      }
-      toast("Confirm mint in your wallet…");
+    const r = resourcesRef.current;
+    const canOnChainMint = !!(chainClient && chainReady && r.solax >= COSTS.roll.solax);
+
+    if (canOnChainMint && chainClient) {
+      toast("Confirm mint in your wallet…", { critical: true });
       try {
         const { axol } = await chainClient.mintAxol();
         const rolled = withCosmetic(axol);
@@ -793,31 +818,30 @@ export default function World() {
         return rolled;
       } catch (e) {
         console.error("[mint]", e);
-        toast("Transaction cancelled or failed.");
+        toast("Transaction cancelled or failed.", { critical: true });
         return null;
       }
     }
 
-    let rolled: Axol | null = null;
-    if (resources.dna < COSTS.roll.dna) {
-      toast("Not enough DNA");
+    if (r.dna < COSTS.roll.dna) {
+      toast("Not enough DNA — buy more at Harbor or claim the free bonus", { critical: true });
       return null;
     }
-    if (resources.energy < COSTS.roll.energy) {
-      toast("Out of energy — refill below to keep spinning");
+    if (r.energy < COSTS.roll.energy) {
+      toast("Out of energy — refill below to keep spinning", { critical: true });
       return null;
     }
-    setResources((r) => ({
-      ...r,
-      dna: r.dna - COSTS.roll.dna,
-      energy: r.energy - COSTS.roll.energy,
+
+    setResources((prev) => ({
+      ...prev,
+      dna: prev.dna - COSTS.roll.dna,
+      energy: prev.energy - COSTS.roll.energy,
     }));
-    rolled = withCosmetic(randomAxol({ rarity: rollRarity(_luck) }));
-    if (!rolled) return null;
-    setAxols((list) => [...list, rolled!]);
+    const rolled = withCosmetic(randomAxol({ rarity: rollRarity(_luck) }));
+    setAxols((list) => [...list, rolled]);
     bumpQuest("rolls");
     grantProgression("hatch");
-    pushFeed(`rolled a ${rolled!.rarity} ${CLASS_META[rolled!.cls].name}!`, CLASS_META[rolled!.cls].color);
+    pushFeed(`rolled a ${rolled.rarity} ${CLASS_META[rolled.cls].name}!`, CLASS_META[rolled.cls].color);
     return rolled;
   };
 
@@ -967,7 +991,6 @@ export default function World() {
     if (price > 0) {
       setPurchasing(true);
       try {
-        await refreshSolax();
         if (!(await burnAndRefresh(price))) return false;
       } finally {
         setPurchasing(false);
@@ -1095,7 +1118,6 @@ export default function World() {
     const cost = blocks * ENERGY_REFILL.solaxPerBlock;
     const gain = blocks * ENERGY_REFILL.perBlock;
     if (blocks <= 0) return false;
-    await refreshSolax();
     if (!(await burnAndRefresh(cost))) return false;
     setResources((r) => ({ ...r, energy: Math.min(r.maxEnergy, r.energy + gain) }));
     grantProgression("energy_refill", cost);
@@ -1108,7 +1130,6 @@ export default function World() {
     const a = axols.find((x) => x.id === id);
     if (!a) return false;
     const cost = feedCost(a.level);
-    await refreshSolax();
     if (!(await burnAndRefresh(cost))) return false;
     const gain = solaxyXpGain(a, feedXp(a.level));
     setAxols((list) =>
@@ -1125,7 +1146,6 @@ export default function World() {
     const a = axols.find((x) => x.id === id);
     if (!a) return false;
     const cost = powerUpCost(a.level);
-    await refreshSolax();
     if (!(await burnAndRefresh(cost))) return false;
     setAxols((list) =>
       list.map((x) =>

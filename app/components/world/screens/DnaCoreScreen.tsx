@@ -70,64 +70,78 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
   const [boosts, setBoosts] = useState<Record<string, boolean>>({});
 
   const luck = BOOSTERS.reduce((s, b) => (boosts[b.id] ? s + b.luck : s), 0);
+  /** On-chain mint only when chain is live AND wallet has enough SOLAX; otherwise DNA spin. */
+  const onChainMint = world.chainReady && world.resources.solax >= COSTS.roll.solax;
 
   async function spin(count: number) {
     if (phase === "charging") return;
 
-    const activeBoosters = BOOSTERS.filter((b) => boosts[b.id]);
-    let dnaBoostCost = 0;
-    const consumeKeys: string[] = [];
-    for (const b of activeBoosters) {
-      const owned = world.resources.items?.[b.id] ?? 0;
-      if (owned > 0) consumeKeys.push(b.id);
-      else dnaBoostCost += b.cost;
-    }
+    try {
+      sfx.startAmbient();
+      sfx.click();
 
-    if (world.chainReady) {
-      if (world.resources.solax < COSTS.roll.solax * count) {
-        world.toast(`Need ${(COSTS.roll.solax * count).toLocaleString()} SOLAX in wallet`);
-        return;
+      const activeBoosters = BOOSTERS.filter((b) => boosts[b.id]);
+      let dnaBoostCost = 0;
+      const consumeKeys: string[] = [];
+      for (const b of activeBoosters) {
+        const owned = world.resources.items?.[b.id] ?? 0;
+        if (owned > 0) consumeKeys.push(b.id);
+        else dnaBoostCost += b.cost;
       }
-    } else {
-      const dnaNeed = count * COSTS.roll.dna + dnaBoostCost;
-      const energyNeed = count * COSTS.roll.energy;
-      if (world.resources.dna < dnaNeed) {
-        world.toast(dnaBoostCost > 0 ? `Need ${dnaNeed} DNA (includes boosters)` : `Need ${dnaNeed} DNA to spin`);
-        return;
-      }
-      if (world.resources.energy < energyNeed) {
-        world.toast("Out of energy — refill below to keep spinning");
-        return;
-      }
-    }
 
-    setLastCount(count);
-    setPhase("charging");
-    setResults([]);
-    sfx.charge();
-    const t0 = Date.now();
-    const got: Axol[] = [];
-    for (let i = 0; i < count; i++) {
-      const a = await world.doRoll(luck);
-      if (a) got.push(a);
-      else break;
-    }
-    const wait = Math.max(0, 1250 - (Date.now() - t0));
-    if (wait) await delay(wait);
-    if (got.length === 0) {
+      if (onChainMint) {
+        if (world.resources.solax < COSTS.roll.solax * count) {
+          world.toast(`Need ${(COSTS.roll.solax * count).toLocaleString()} SOLAX in wallet`, { critical: true });
+          return;
+        }
+      } else {
+        const dnaNeed = count * COSTS.roll.dna + dnaBoostCost;
+        const energyNeed = count * COSTS.roll.energy;
+        if (world.resources.dna < dnaNeed) {
+          world.toast(
+            dnaBoostCost > 0 ? `Need ${dnaNeed} DNA (includes boosters)` : `Need ${dnaNeed} DNA to spin`,
+            { critical: true },
+          );
+          return;
+        }
+        if (world.resources.energy < energyNeed) {
+          world.toast("Out of energy — refill below to keep spinning", { critical: true });
+          return;
+        }
+      }
+
+      setLastCount(count);
+      setPhase("charging");
+      setResults([]);
+      sfx.charge();
+      const t0 = Date.now();
+      const got: Axol[] = [];
+      for (let i = 0; i < count; i++) {
+        const a = await world.doRoll(luck);
+        if (a) got.push(a);
+        else break;
+      }
+      const wait = Math.max(0, 1250 - (Date.now() - t0));
+      if (wait) await delay(wait);
+      if (got.length === 0) {
+        setPhase("idle");
+        world.toast(onChainMint ? "Mint failed or cancelled" : "Spin failed — check DNA & energy", { critical: true });
+        return;
+      }
+
+      if (dnaBoostCost > 0) world.spendDna(dnaBoostCost);
+      if (consumeKeys.length > 0) world.consumeHarborItems(consumeKeys);
+
+      const best = got.reduce((a, b) => (RARITY_META[b.rarity].stars > RARITY_META[a.rarity].stars ? b : a), got[0]);
+      setResults(got);
+      setPhase("revealed");
+      sfx.reveal(best.rarity);
+      setBoosts({});
+    } catch (e) {
+      console.error("[spin]", e);
       setPhase("idle");
-      world.toast(world.chainReady ? "Mint failed or cancelled" : "Spin failed — try again");
-      return;
+      world.toast(e instanceof Error ? e.message : "Spin failed — try again", { critical: true });
     }
-
-    if (dnaBoostCost > 0) world.spendDna(dnaBoostCost);
-    if (consumeKeys.length > 0) world.consumeHarborItems(consumeKeys);
-
-    const best = got.reduce((a, b) => (RARITY_META[b.rarity].stars > RARITY_META[a.rarity].stars ? b : a), got[0]);
-    setResults(got);
-    setPhase("revealed");
-    sfx.reveal(best.rarity);
-    setBoosts({});
   }
 
   async function refill(blocks: number) {
@@ -260,7 +274,7 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
                 </div>
               )}
             </div>
-            {world.chainReady ? (
+            {onChainMint ? (
               <p className="mt-1.5 text-center text-[0.64rem] font-semibold text-amber-300">
                 On-chain mint · {COSTS.roll.solax.toLocaleString()} SOLAX per Solaxy · energy from your player account
               </p>
@@ -273,15 +287,15 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
           <div className="mt-3 flex w-full max-w-xl gap-3 overflow-visible px-2 pt-2">
             <button
               onClick={() => spin(1)}
-              disabled={phase === "charging" || (!world.chainReady && world.resources.energy < COSTS.roll.energy)}
+              disabled={phase === "charging" || (!onChainMint && world.resources.energy < COSTS.roll.energy)}
               className="group relative flex flex-1 flex-col items-center rounded-3xl bg-gradient-to-b from-[#3aa0ff] to-[#1f6fd6] py-3 font-display font-extrabold text-white shadow-[0_10px_30px_rgba(31,111,214,0.5)] transition hover:-translate-y-0.5 disabled:opacity-60"
             >
               <span className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
                 <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
               </span>
-              <span className="relative z-10 text-lg">{phase === "charging" ? "AWAKENING…" : world.chainReady ? "MINT SOLAXY" : "SPIN DNA"}</span>
+              <span className="relative z-10 text-lg">{phase === "charging" ? "AWAKENING…" : onChainMint ? "MINT SOLAXY" : "SPIN DNA"}</span>
               <span className="relative z-10 inline-flex items-center gap-1 text-[0.7rem] font-bold text-white/80">
-                {world.chainReady ? (
+                {onChainMint ? (
                   <><GameIcon src={UI.coin} size={14} /> {COSTS.roll.solax.toLocaleString()} SOLAX</>
                 ) : (
                   <><GameIcon src={UI.dna} size={14} /> 1 · <GameIcon src={UI.energy} size={14} /> 10</>
@@ -290,7 +304,7 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
             </button>
             <button
               onClick={() => spin(10)}
-              disabled={phase === "charging" || (!world.chainReady && (world.resources.energy < COSTS.roll.energy * 10 || world.resources.dna < COSTS.roll.dna * 10))}
+              disabled={phase === "charging" || (!onChainMint && (world.resources.energy < COSTS.roll.energy * 10 || world.resources.dna < COSTS.roll.dna * 10))}
               className="group relative flex flex-1 flex-col items-center rounded-3xl bg-gradient-to-b from-[#ffb340] to-[#ff8a1f] py-3 font-display font-extrabold text-white shadow-[0_10px_30px_rgba(255,138,31,0.5)] transition hover:-translate-y-0.5 disabled:opacity-60"
             >
               <span className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
@@ -299,9 +313,9 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
               <span className="absolute -right-1 -top-3 z-20 rounded-full border-2 border-ink-900 bg-rose-500 px-2 py-0.5 text-[0.58rem] font-extrabold leading-none shadow-[0_2px_8px_rgba(244,63,94,0.55)]">
                 -10%
               </span>
-              <span className="relative z-10 text-lg">{world.chainReady ? "10× MINT" : "10X SPIN"}</span>
+              <span className="relative z-10 text-lg">{onChainMint ? "10× MINT" : "10X SPIN"}</span>
               <span className="relative z-10 inline-flex items-center gap-1 text-[0.7rem] font-bold text-white/90">
-                {world.chainReady ? (
+                {onChainMint ? (
                   <><GameIcon src={UI.coin} size={14} /> {(COSTS.roll.solax * 10).toLocaleString()} SOLAX</>
                 ) : (
                   <><GameIcon src={UI.dna} size={14} /> 10 · <GameIcon src={UI.energy} size={14} /> 100</>
