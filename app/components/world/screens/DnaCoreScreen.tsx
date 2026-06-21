@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Axol, CLASS_META, COSTS, DNA_BONUS, ENERGY_REFILL, RARITY_META, RARITY_ORDER, Rarity, axolSprite, dnaBonusRemaining, energyRefillCost, formatCooldown } from "@/lib/game";
+import { Axol, CLASS_META, COSTS, DNA_BONUS, ENERGY_REFILL, RARITY_META, RARITY_ORDER, Rarity, axolSprite, dnaBonusRemaining, energyBoostRemaining, energyRefillCost, formatCooldown, isEnergyBoostActive } from "@/lib/game";
 import { UI } from "@/lib/ui-icons";
 import { sfx } from "@/lib/sfx";
 import type { WorldApi } from "../world";
 import { Panel, ScreenShell, ScreenTop, SectionTitle } from "../ScreenChrome";
-import { Stars } from "../primitives";
+import { AxolArt, Stars } from "../primitives";
 import { GameIcon } from "../GameIcon";
 
 const BOOSTERS = [
@@ -241,6 +241,11 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
 
           {/* energy + refill */}
           <div className="mt-3 w-full max-w-xl px-2">
+            {isEnergyBoostActive() ? (
+              <div className="mb-2 rounded-xl border border-amber-300/35 bg-amber-400/10 px-3 py-1.5 text-center text-[0.62rem] font-bold text-amber-200">
+                24h launch boost — 500 max energy · {formatCooldown(energyBoostRemaining())} left
+              </div>
+            ) : null}
             <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 px-3 py-2.5">
               <img src="/icon-energy.png" alt="" className="h-6 w-6 object-contain" />
               <div className="flex-1">
@@ -597,7 +602,7 @@ function RevealOverlay({ results, count, canAfford, onClose, onAddToPond, onAgai
         {/* the creature */}
         <div className="relative z-10 grid place-items-center">
           <span className="absolute h-64 w-64 rounded-full blur-3xl" style={{ background: `${color}66` }} />
-          <img src={axolSprite(best)} alt="" className="relative h-56 w-56 animate-slamin object-contain sm:h-64 sm:w-64" draggable={false} style={{ filter: `drop-shadow(0 0 26px ${color}) drop-shadow(0 14px 18px rgba(0,0,0,0.6))` }} />
+          <AxolArt axol={best} size={256} float={false} glow={color} className="animate-slamin sm:h-64 sm:w-64" />
           <span className="absolute -right-2 top-2 animate-starpop rounded-full bg-rose-500 px-2 py-0.5 text-[0.6rem] font-extrabold text-white" style={{ animationDelay: "0.6s" }}>NEW!</span>
         </div>
 

@@ -8,6 +8,7 @@ import {
   ELEMENT_ICON,
   RARITY_META,
   Resources,
+  axolClassSprite,
   axolSprite,
   breedCompatibility,
   possibleElements,
@@ -565,6 +566,10 @@ function HatchReveal({ child, onAgain, onClose }: { child: Axol; onAgain: () => 
   const color = CLASS_META[child.cls].color;
   const rc = RARITY_META[child.rarity].color;
   const epicPlus = RARITY_META[child.rarity].stars >= 3;
+  const primary = axolSprite(child);
+  const fallback = axolClassSprite(child);
+  const [spriteSrc, setSpriteSrc] = useState(primary);
+  useEffect(() => setSpriteSrc(primary), [primary]);
   return (
     <div className="relative flex flex-col items-center">
       <span className="pointer-events-none absolute inset-0 animate-flashout rounded-3xl bg-white" />
@@ -599,7 +604,14 @@ function HatchReveal({ child, onAgain, onClose }: { child: Axol; onAgain: () => 
 
       <div className="relative z-10 grid place-items-center">
         <span className="absolute h-44 w-44 rounded-full blur-3xl" style={{ background: `${color}66` }} />
-        <img src={axolSprite(child)} alt="" className="relative h-44 w-44 animate-slamin object-contain" draggable={false} style={{ filter: `drop-shadow(0 0 22px ${color}) drop-shadow(0 12px 14px rgba(0,0,0,0.6))` }} />
+        <img
+          src={spriteSrc}
+          alt=""
+          className="relative h-44 w-44 animate-slamin object-contain"
+          draggable={false}
+          style={{ filter: `drop-shadow(0 0 22px ${color}) drop-shadow(0 12px 14px rgba(0,0,0,0.6))` }}
+          onError={() => { if (spriteSrc !== fallback) setSpriteSrc(fallback); }}
+        />
         <span className="absolute -right-1 top-1 animate-starpop rounded-full bg-rose-500 px-2 py-0.5 text-[0.58rem] font-extrabold text-white" style={{ animationDelay: "0.5s" }}>NEW!</span>
       </div>
 

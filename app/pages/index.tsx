@@ -9,27 +9,30 @@ import {
   COSTS,
   DNA_BONUS,
   ON_CHAIN_COSTS,
-  dnaBonusRemaining,
-  formatCooldown,
   ENERGY_REFILL,
   FeedItem,
   Resources,
   STARTING_RESOURCES,
+  applyEnergyEvent,
   breedAxol,
-  withCosmetic,
+  dnaBonusRemaining,
+  energyBoostRemaining,
+  feedCost,
   feedItem,
+  feedXp,
+  formatCooldown,
+  getIdCounter,
+  isEnergyBoostActive,
+  powerUpCost,
+  primeIds,
   randomAxol,
   resolveBattle,
   rollRarity,
   seedAxols,
-  wildAxol,
-  xpNeeded,
-  feedCost,
-  feedXp,
-  powerUpCost,
-  getIdCounter,
-  primeIds,
   setIdCounter,
+  wildAxol,
+  withCosmetic,
+  xpNeeded,
 } from "@/lib/game";
 import { MARKET_ITEM_EFFECTS, normalizeItems } from "@/lib/harbor-items";
 import {
@@ -79,7 +82,7 @@ import { ConnectWalletModal } from "@/components/world/ConnectWalletModal";
 import { ProfileDropdown } from "@/components/world/ProfileDropdown";
 import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile";
 import { STARTER_PROFILE, needsUsername, normalizeProfile, formatTrainerName } from "@/lib/profile";
-import { applyLaunchAirdrop } from "@/lib/airdrops";
+import { applyEggRecoveryAirdrop, applyEnergyRefillAirdrop, applyLaunchAirdrop } from "@/lib/airdrops";
 import {
   transferSolaxToBurnWallet,
   verifySolaxBurnTransfer,
@@ -124,14 +127,25 @@ function pickMostAxols(...lists: (Axol[] | undefined)[]): Axol[] {
   return best ?? [];
 }
 
+function maxOffChainConsumables(a: Resources, b: Resources): Pick<Resources, "eggs" | "dna" | "energy"> {
+  return {
+    eggs: Math.max(a.eggs ?? 0, b.eggs ?? 0),
+    dna: Math.max(a.dna ?? 0, b.dna ?? 0),
+    energy: Math.max(a.energy ?? 0, b.energy ?? 0),
+  };
+}
+
 function mergeOffChainResources(
   local: Resources | undefined,
   cloud: CloudSave["resources"] | undefined,
 ): Resources {
   if (local && cloud) {
+    const localN = normalizeResources(local);
+    const cloudN = normalizeResources({ ...STARTING_RESOURCES, ...cloud, solax: 0 });
     return normalizeResources({
-      ...cloud,
-      ...local,
+      ...cloudN,
+      ...localN,
+      ...maxOffChainConsumables(localN, cloudN),
       items: { ...(cloud.items ?? {}), ...(local.items ?? {}) },
     });
   }
@@ -195,11 +209,11 @@ function freshSave(): GameSave {
 }
 
 function normalizeResources(r: Resources): Resources {
-  return {
+  return applyEnergyEvent({
     ...STARTING_RESOURCES,
     ...r,
     items: normalizeItems(r.items),
-  };
+  });
 }
 
 function applySave(
@@ -442,8 +456,7 @@ export default function World() {
             resourcesDraft = normalizeResources({
               ...resourcesDraft,
               solax: state.solax,
-              energy: state.energy,
-              maxEnergy: 100,
+              energy: Math.max(resourcesDraft.energy, state.energy),
             });
             if (state.axols.length > 0 && metaActive == null) {
               setActiveId(state.axols[0].id);
@@ -518,9 +531,21 @@ export default function World() {
         axolsDraft = gift.axols;
       }
 
+      const eggRecovery = applyEggRecoveryAirdrop(profileDraft, resourcesDraft, axolsDraft);
+      if (eggRecovery.applied) {
+        profileDraft = eggRecovery.profile;
+        resourcesDraft = eggRecovery.resources;
+      }
+
+      const energyRefill = applyEnergyRefillAirdrop(profileDraft, resourcesDraft);
+      if (energyRefill.applied) {
+        profileDraft = energyRefill.profile;
+        resourcesDraft = energyRefill.resources;
+      }
+
       primeIds(axolsDraft);
       setAxols(axolsDraft);
-      setResources(resourcesDraft);
+      setResources(normalizeResources(resourcesDraft));
       setProfile(normalizeProfile(profileDraft));
       setQuests(metaQuests);
       setBattleHistory(metaHistory);
@@ -541,7 +566,13 @@ export default function World() {
       toast(
         gift.applied
           ? "Launch gift! +5 eggs · +4 breeds per Solaxy"
-          : restoredFromBackup
+          : eggRecovery.applied
+            ? "Nursery restocked! +8 eggs ready for breeding."
+            : energyRefill.applied
+              ? isEnergyBoostActive()
+                ? "Energy boost! 500 stamina for the next 24 hours."
+                : "Energy refilled! Full stamina restored."
+              : restoredFromBackup
             ? `Progress restored! ${count} Solax${count === 1 ? "y" : "ies"} back.`
             : count > 0
               ? `Welcome back! ${count} Solax${count === 1 ? "y" : "ies"}.`
@@ -719,11 +750,10 @@ export default function World() {
     if (!chainClient) return;
     const state = await chainClient.refreshState();
     setAxols(state.axols.map(withCosmetic));
-    setResources((r) => ({
+    setResources((r) => normalizeResources({
       ...r,
       solax: state.solax,
-      energy: state.energy,
-      maxEnergy: 100,
+      energy: Math.max(r.energy, state.energy),
     }));
   }, [chainClient]);
 
@@ -1296,7 +1326,10 @@ export default function World() {
     feedAxol,
     powerUp,
     buyEnergy,
-    setActive: setActiveId,
+    setActive: (id: number) => {
+      setActiveId(id);
+      setSelectedId(id);
+    },
     toast,
     refreshSolax,
     recordEconomy,
@@ -1491,6 +1524,13 @@ function ResourcePill({ icon, label, value }: { icon: string; label: string; val
 }
 
 function EnergyPill({ energy, max, streak }: { energy: number; max: number; streak: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isEnergyBoostActive(now)) return;
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [now]);
+  const boostLeft = energyBoostRemaining(now);
   return (
     <div className="flex items-center gap-2 rounded-full border border-white/15 bg-ink-900/70 py-1 pl-1 pr-3.5 shadow-md backdrop-blur">
       <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-b from-yellow-400/30 to-yellow-600/20">
@@ -1500,7 +1540,9 @@ function EnergyPill({ energy, max, streak }: { energy: number; max: number; stre
         <div className="font-display text-sm font-extrabold text-white">
           {energy}/{max}
         </div>
-        <div className="text-[0.5rem] uppercase tracking-wide text-white/50">Energy · {streak}d streak</div>
+        <div className="text-[0.5rem] uppercase tracking-wide text-white/50">
+          {boostLeft > 0 ? `500 boost · ${formatCooldown(boostLeft)} left` : `Energy · ${streak}d streak`}
+        </div>
       </div>
     </div>
   );

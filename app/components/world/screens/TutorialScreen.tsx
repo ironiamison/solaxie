@@ -317,6 +317,10 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
               <li><b className="text-white">Settings</b> — audio, notification toasts, wallet copy, and disconnect (profile menu → Settings).</li>
               <li><b className="text-white">Harbor boosters</b> — lucky charms and odds items bought at Market apply to DNA Core spins; XP potions grant instantly.</li>
               <li><b className="text-white">Launch airdrop</b> — one-time +5 eggs and +4 breed slots per Solaxy for early trainers.</li>
+              <li><b className="text-white">Nursery eggs</b> — new islands start with 5 eggs; trainers missing eggs from a save sync get a one-time +8 restock on login.</li>
+              <li><b className="text-white">Energy refill</b> — one-time full stamina restore for every trainer on next login.</li>
+              <li><b className="text-white">24h energy boost</b> — max energy raised to 500 for the first 24 hours after launch (countdown on the energy bar).</li>
+              <li><b className="text-white">Primal art</b> — Crystal, Ember, and other Primal pulls render cleanly on DNA reveal and in Collection.</li>
               <li><b className="text-white">Copy &amp; UX</b> — play-and-earn messaging, trainer names without .sol suffix, battle energy aligned with UI, and clearer spend toasts.</li>
             </ul>
           </div>

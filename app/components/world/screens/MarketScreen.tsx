@@ -320,10 +320,7 @@ export default function MarketScreen({ world }: { world: WorldApi }) {
     const reward: Partial<Resources> = { ...it.reward };
     if (reward.energy === 9999) reward.energy = world.resources.maxEnergy;
     return world.purchase(it.price, reward, it.name, it.id).then((ok) => {
-      if (!ok) {
-        world.toast("Purchase failed — check your token balance and confirm in wallet.");
-        return false;
-      }
+      if (!ok) return false;
       if (it.addAxol) world.addAxol(randomAxol({ rarity: it.addAxol }));
       if (it.stock != null) setStock((s) => ({ ...s, [it.id]: (s[it.id] ?? 0) - 1 }));
       sfx.coin();

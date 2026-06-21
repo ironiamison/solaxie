@@ -232,8 +232,42 @@ export const ON_CHAIN_COSTS = {
 };
 
 // Energy refill pricing: 100k SOLAX per 10 energy → 1,000,000 for a full 100 bar.
-// Energy refill pricing: 100k SOLAX per 10 energy → 1,000,000 for a full 100 bar.
 export const ENERGY_REFILL = { perBlock: 10, solaxPerBlock: 100_000 };
+
+export const BASE_MAX_ENERGY = 100;
+export const ENERGY_BOOST_MAX = 500;
+/** Temporary 24h launch boost — energy cap raised to 500 until this UTC instant. */
+export const ENERGY_BOOST_END_MS = Date.UTC(2026, 5, 22, 21, 30, 0);
+
+export function isEnergyBoostActive(now = Date.now()): boolean {
+  return now < ENERGY_BOOST_END_MS;
+}
+
+export function energyBoostRemaining(now = Date.now()): number {
+  return isEnergyBoostActive(now) ? Math.max(0, ENERGY_BOOST_END_MS - now) : 0;
+}
+
+export function eventMaxEnergy(now = Date.now()): number {
+  return isEnergyBoostActive(now) ? ENERGY_BOOST_MAX : BASE_MAX_ENERGY;
+}
+
+/** Apply or revert the timed 500-energy event cap. */
+export function applyEnergyEvent(resources: Resources, now = Date.now()): Resources {
+  const cap = eventMaxEnergy(now);
+  if (cap > BASE_MAX_ENERGY) {
+    const alreadyBoosted = resources.maxEnergy >= ENERGY_BOOST_MAX;
+    return {
+      ...resources,
+      maxEnergy: ENERGY_BOOST_MAX,
+      energy: alreadyBoosted ? Math.min(resources.energy, ENERGY_BOOST_MAX) : ENERGY_BOOST_MAX,
+    };
+  }
+  return {
+    ...resources,
+    maxEnergy: BASE_MAX_ENERGY,
+    energy: Math.min(resources.energy, BASE_MAX_ENERGY),
+  };
+}
 
 /** SOLAX cost to refill `energy` points (priced per 10-energy block). */
 export function energyRefillCost(energy: number): number {
@@ -261,9 +295,9 @@ export function formatCooldown(ms: number): string {
 export const STARTING_RESOURCES: Resources = {
   solax: 0,
   dna: 34,
-  eggs: 3,
+  eggs: 5,
   energy: 100,
-  maxEnergy: 100,
+  maxEnergy: BASE_MAX_ENERGY,
   streak: 12,
   items: {},
 };
@@ -706,7 +740,19 @@ export function axolDexId(a: Axol): string {
   return `base-${cls}`;
 }
 
+/** Class-line sprite — always present for primal elements (hand-illustrated). */
+export function axolClassSprite(a: Axol): string {
+  if (a.rarity === "Cosmic" || a.cosmeticId === `cosmic-${a.cls}`) {
+    return `/sprites/cosmetics/cosmic-${a.cls}.png`;
+  }
+  return CLASS_META[a.cls].sprite;
+}
+
 export function axolSprite(a: Axol): string {
+  // Primal lines skip the filter-based dex pipeline — use illustrated class art.
+  if (PRIMAL_CLASSES.includes(a.cls)) {
+    return axolClassSprite(a);
+  }
   return `/sprites/dex/${axolDexId(a)}.png`;
 }
 
@@ -751,6 +797,24 @@ export function feedXp(level: number): number {
 
 export function collectionPower(axols: Axol[]): number {
   return Math.round(axols.reduce((s, a) => s + a.attack + a.defense + a.hp * 0.25 + a.speed * 0.5, 0));
+}
+
+/** Arena battle lineup — active fighter first, then strongest backups. */
+export function buildBattleTeam(axols: Axol[], activeId: number | null, limit = 5): Axol[] {
+  if (axols.length === 0) return [];
+  const out: Axol[] = [];
+  if (activeId != null) {
+    const lead = axols.find((a) => a.id === activeId);
+    if (lead) out.push(lead);
+  }
+  const rest = [...axols]
+    .filter((a) => a.id !== activeId)
+    .sort((a, b) => b.level - a.level || b.id - a.id);
+  for (const a of rest) {
+    if (out.length >= limit) break;
+    out.push(a);
+  }
+  return out;
 }
 
 export type Ability = { name: string; icon: string; level: number };

@@ -532,7 +532,6 @@ function DetailPanel({ world, axol, tab, setTab }: { world: WorldApi; axol: Axol
           cost={feedCost(axol.level)}
           onClick={async () => {
             const c = feedCost(axol.level);
-            await world.refreshSolax();
             if (await world.feedAxol(axol.id)) {
               world.toast(`Fed ${CLASS_META[axol.cls].name} #${axol.id} · −${c.toLocaleString()} SOLAX burned`, { critical: true });
             }
@@ -545,7 +544,6 @@ function DetailPanel({ world, axol, tab, setTab }: { world: WorldApi; axol: Axol
           cost={powerUpCost(axol.level)}
           onClick={async () => {
             const c = powerUpCost(axol.level);
-            await world.refreshSolax();
             if (await world.powerUp(axol.id)) {
               world.toast(`Powered up to Lv.${axol.level + 1}! · −${c.toLocaleString()} SOLAX burned`, { critical: true });
             }

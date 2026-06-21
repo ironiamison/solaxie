@@ -1,4 +1,5 @@
 import type { Axol } from "./game";
+import { buildBattleTeam } from "./game";
 import type { AvatarId, TrainerProfile } from "./profile";
 import { trainerXpToNext } from "./progression";
 
@@ -63,7 +64,7 @@ export function pickChampion(p: PublicPlayer): Axol | null {
 }
 
 export function battleTeam(p: PublicPlayer, limit = 5): Axol[] {
-  return [...p.axols].sort((a, b) => b.level - a.level).slice(0, limit);
+  return buildBattleTeam(p.axols, p.activeId, limit);
 }
 
 export function leaderboardRefreshLabel(): string {

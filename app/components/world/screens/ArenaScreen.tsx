@@ -8,6 +8,7 @@ import {
   Replay,
   ReplayEvent,
   axolSprite,
+  buildBattleTeam,
   buildReplay,
   COSTS,
   wildAxol,
@@ -69,9 +70,15 @@ type Opponent = {
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default function ArenaScreen({ world }: { world: WorldApi }) {
-  const team = world.axols.slice(0, MAX_TEAM);
-  const [myId, setMyId] = useState<number | null>(team[0]?.id ?? null);
+  const team = buildBattleTeam(world.axols, world.activeId, MAX_TEAM);
+  const [myId, setMyId] = useState<number | null>(world.activeId ?? team[0]?.id ?? null);
   const mine = world.axols.find((a) => a.id === myId) ?? team[0];
+
+  useEffect(() => {
+    if (world.activeId != null && world.axols.some((a) => a.id === world.activeId)) {
+      setMyId(world.activeId);
+    }
+  }, [world.activeId, world.axols]);
 
   const [phase, setPhase] = useState<Phase>("lobby");
   const [enemy, setEnemy] = useState<Axol | null>(null);
@@ -1316,7 +1323,7 @@ function TeamTray({ world, team, myId, setMyId }: { world: WorldApi; team: Axol[
     <Panel className="p-4">
       <div className="mb-2 flex items-center justify-between">
         <SectionTitle accent="#c08bff">Your Team</SectionTitle>
-        <span className="text-[0.58rem] text-white/40">Tap to set your fighter · expand with SOLAX</span>
+        <span className="text-[0.58rem] text-white/40">Active ★ first · tap to switch fighter</span>
       </div>
       <div className="flex gap-3 overflow-x-auto pb-1">
         {Array.from({ length: MAX_TEAM }).map((_, i) => {
@@ -1331,6 +1338,7 @@ function TeamTray({ world, team, myId, setMyId }: { world: WorldApi; team: Axol[
                 onClick={() => {
                   sfx.click();
                   setMyId(a.id);
+                  world.setActive(a.id);
                 }}
                 className="relative shrink-0 rounded-2xl border bg-black/30 p-2 text-center transition hover:-translate-y-0.5"
                 style={{ width: 92, borderColor: active ? cc : "rgba(255,255,255,0.1)", boxShadow: active ? `0 0 18px ${cc}66` : undefined }}

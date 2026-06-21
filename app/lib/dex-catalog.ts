@@ -35,6 +35,14 @@ export function dexSpritePath(id: string): string {
   return `/sprites/dex/${id}.png`;
 }
 
+function catalogSprite(cls: AxolClass, id: string): string {
+  if (PRIMAL_CLASSES.includes(cls)) {
+    if (id.startsWith("cosmic-")) return `/sprites/cosmetics/cosmic-${cls}.png`;
+    return CLASS_META[cls].sprite;
+  }
+  return dexSpritePath(id);
+}
+
 const RARITY_ECHOES: { stage: DexStage; label: string; nameSuffix: string; rarity: Rarity; minStars: number }[] = [
   { stage: "rare", label: "Rare Echo", nameSuffix: "Rare", rarity: "Rare", minStars: 2 },
   { stage: "epic", label: "Epic Echo", nameSuffix: "Epic", rarity: "Epic", minStars: 3 },
@@ -56,7 +64,7 @@ function buildCatalog(): DexEntry[] {
       stage: "base",
       stageLabel: "Base Form",
       cls,
-      sprite: dexSpritePath(`base-${cls}`),
+      sprite: catalogSprite(cls, `base-${cls}`),
       rarity: "Common",
       howToUnlock: `Roll or breed any ${name} Solaxy at the DNA Core`,
       line: cls,
@@ -71,7 +79,7 @@ function buildCatalog(): DexEntry[] {
         stage: echo.stage,
         stageLabel: echo.label,
         cls,
-        sprite: dexSpritePath(echoId),
+        sprite: catalogSprite(cls, echoId),
         rarity: echo.rarity,
         howToUnlock: `Own a ${echo.rarity} or higher ${name} Solaxy`,
         line: cls,
@@ -85,7 +93,7 @@ function buildCatalog(): DexEntry[] {
       stage: "cosmic",
       stageLabel: "Cosmic Evolution",
       cls,
-      sprite: dexSpritePath(`cosmic-${cls}`),
+      sprite: catalogSprite(cls, `cosmic-${cls}`),
       rarity: "Cosmic",
       howToUnlock: "Pull Cosmic rarity from DNA Core or breed a Cosmic egg",
       line: cls,

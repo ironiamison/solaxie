@@ -1,5 +1,5 @@
-import { ReactNode } from "react";
-import { Axol, CLASS_META, RARITY_META, axolSprite } from "@/lib/game";
+import { ReactNode, useEffect, useState } from "react";
+import { Axol, CLASS_META, PRIMAL_CLASSES, RARITY_META, axolClassSprite, axolSprite } from "@/lib/game";
 import { UI } from "@/lib/ui-icons";
 import { CloseIcon, GameIcon } from "./GameIcon";
 
@@ -69,8 +69,26 @@ export function RarityTag({ rarity }: { rarity: Axol["rarity"] }) {
   );
 }
 
-export function AxolArt({ axol, size = 120, float = true }: { axol: Axol; size?: number; float?: boolean }) {
+export function AxolArt({
+  axol,
+  size = 120,
+  float = true,
+  glow,
+  className,
+}: {
+  axol: Axol;
+  size?: number;
+  float?: boolean;
+  glow?: string;
+  className?: string;
+}) {
   const color = CLASS_META[axol.cls].color;
+  const primary = axolSprite(axol);
+  const fallback = axolClassSprite(axol);
+  const [src, setSrc] = useState(primary);
+  useEffect(() => setSrc(primary), [primary]);
+  const primalMatte = PRIMAL_CLASSES.includes(axol.cls);
+
   return (
     <div className="relative grid place-items-center" style={{ width: size, height: size }}>
       <div
@@ -78,11 +96,20 @@ export function AxolArt({ axol, size = 120, float = true }: { axol: Axol; size?:
         style={{ width: size * 0.8, height: size * 0.5, bottom: size * 0.06, background: `${color}55` }}
       />
       <img
-        src={axolSprite(axol)}
+        src={src}
         alt={CLASS_META[axol.cls].name}
-        className={float ? "relative animate-floaty" : "relative"}
-        style={{ width: size, height: size, objectFit: "contain", filter: "drop-shadow(0 10px 12px rgba(0,0,0,0.5))" }}
+        className={[float ? "relative animate-floaty" : "relative", className].filter(Boolean).join(" ")}
+        style={{
+          width: size,
+          height: size,
+          objectFit: "contain",
+          mixBlendMode: primalMatte ? "lighten" : undefined,
+          filter: glow
+            ? `drop-shadow(0 0 26px ${glow}) drop-shadow(0 14px 18px rgba(0,0,0,0.6))`
+            : "drop-shadow(0 10px 12px rgba(0,0,0,0.5))",
+        }}
         draggable={false}
+        onError={() => { if (src !== fallback) setSrc(fallback); }}
       />
     </div>
   );
