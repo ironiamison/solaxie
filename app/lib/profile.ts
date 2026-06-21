@@ -102,8 +102,10 @@ export function normalizeProfile(profile: TrainerProfile): TrainerProfile {
   }
   const league = leagueFromTrophies(profile.trophies);
   const { ceil } = leagueTierProgress(profile.trophies);
+  const name = formatTrainerName(profile.name) || profile.name;
   return {
     ...profile,
+    name,
     activityTickets,
     level,
     xp,
@@ -165,11 +167,12 @@ export function validateUsername(raw: string): string | null {
   return null;
 }
 
-/** Normalize display name — append `.sol` when no domain suffix given. */
+/** Trim trainer name and strip legacy `.sol` suffix. */
 export function formatTrainerName(raw: string): string {
-  const name = raw.trim();
+  let name = raw.trim();
   if (!name) return "";
-  return name.includes(".") ? name : `${name}.sol`;
+  if (name.toLowerCase().endsWith(".sol")) name = name.slice(0, -4).trim();
+  return name;
 }
 
 /** Circular PFP portraits — one per base class. */

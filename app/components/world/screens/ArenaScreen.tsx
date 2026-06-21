@@ -9,6 +9,7 @@ import {
   ReplayEvent,
   axolSprite,
   buildReplay,
+  COSTS,
   wildAxol,
 } from "@/lib/game";
 import { sfx } from "@/lib/sfx";
@@ -19,7 +20,7 @@ import { Panel, ScreenShell, ScreenTop, SectionTitle } from "../ScreenChrome";
 
 type Phase = "lobby" | "searching" | "matched" | "commencing" | "replay" | "result";
 
-const ENERGY_COST = 10;
+const ENERGY_COST = COSTS.battle.energy;
 
 // Team capacity: 3 free starter slots, then SOLAX-gated expansion slots.
 const FREE_SLOTS = 3;

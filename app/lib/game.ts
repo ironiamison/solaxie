@@ -216,14 +216,14 @@ export type Resources = {
 export const COSTS = {
   roll: { solax: 100_000, dna: 0, energy: 0 },
   breed: { solax: 150_000, eggs: 0 },
-  battle: { energy: 5 },
+  battle: { energy: 10 },
 };
 
 /** On-chain program costs (6-decimal SPL base units → whole tokens). */
 export const ON_CHAIN_COSTS = {
   mintAxol: 100_000,
   breedBase: 150_000,
-  battleEnergy: 5,
+  battleEnergy: 10,
   breedEnergy: 10,
   starterGrant: 0,
 };

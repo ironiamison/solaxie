@@ -887,18 +887,15 @@ export function UsernameModal({
           <label className="mb-1.5 block text-left text-[0.65rem] font-extrabold uppercase tracking-widest text-brand-200/80">
             Trainer name
           </label>
-          <div className="flex overflow-hidden rounded-2xl border border-white/15 bg-black/40">
-            <input
-              ref={inputRef}
-              value={value}
-              onChange={(e) => { setValue(e.target.value); setError(null); }}
-              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-              placeholder="luna"
-              maxLength={16}
-              className="flex-1 bg-transparent px-4 py-3 font-display text-lg font-extrabold text-white outline-none placeholder:text-white/25"
-            />
-            <span className="grid place-items-center border-l border-white/10 bg-white/5 px-3 text-sm font-bold text-white/45">.sol</span>
-          </div>
+          <input
+            ref={inputRef}
+            value={value}
+            onChange={(e) => { setValue(e.target.value); setError(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+            placeholder="luna"
+            maxLength={16}
+            className="w-full rounded-2xl border border-white/15 bg-black/40 px-4 py-3 font-display text-lg font-extrabold text-white outline-none placeholder:text-white/25"
+          />
           {error ? <p className="mt-2 text-left text-xs font-bold text-rose-400">{error}</p> : (
             <p className="mt-2 text-left text-[0.65rem] text-white/40">3–16 characters · shown in Live Feed worldwide</p>
           )}

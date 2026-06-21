@@ -73,7 +73,7 @@ import TutorialScreen from "@/components/world/screens/TutorialScreen";
 import { ConnectWalletModal } from "@/components/world/ConnectWalletModal";
 import { ProfileDropdown } from "@/components/world/ProfileDropdown";
 import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile";
-import { STARTER_PROFILE, needsUsername, normalizeProfile } from "@/lib/profile";
+import { STARTER_PROFILE, needsUsername, normalizeProfile, formatTrainerName } from "@/lib/profile";
 import {
   applyProgressEvent,
   applySolaxyLevelUps,
@@ -857,7 +857,8 @@ export default function World() {
     return true;
   };
 
-  const setUsername = (name: string) => {
+  const setUsername = (raw: string) => {
+    const name = formatTrainerName(raw);
     const base = name.split(".")[0] || name;
     setProfile((p) => ({
       ...p,
