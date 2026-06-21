@@ -14,9 +14,9 @@ import {
   TOKEN_DECIMALS,
   TOKEN_MINT,
   TOKEN_PROGRAM_FOR_MINT,
-  playerAta,
 } from "@/utils/anchor";
 import { solaxPriceToBaseUnits } from "@/lib/token";
+import { findSolaxTokenAccount } from "@/lib/wallet-balance";
 import { sendWalletTransaction } from "@/lib/wallet-tx";
 import type { WalletContextState } from "@solana/wallet-adapter-react";
 
@@ -47,19 +47,21 @@ export async function transferSolaxToBurnWallet(
   const amount = solaxPriceToBaseUnits(priceWhole, TOKEN_DECIMALS);
   if (amount <= BigInt(0)) throw new Error("Invalid burn amount");
 
-  const source = playerAta(owner);
+  const sourceInfo = await findSolaxTokenAccount(connection, owner);
+  if (!sourceInfo) {
+    throw new Error("No SOLAX in wallet — buy SOLAX on pump.fun first");
+  }
+  if (sourceInfo.balance < priceWhole) {
+    throw new Error(
+      `Need ${priceWhole.toLocaleString()} SOLAX (you have ${Math.floor(sourceInfo.balance).toLocaleString()})`,
+    );
+  }
+
+  const source = sourceInfo.account;
   const destination = burnWalletAta();
   const tx = new Transaction();
 
-  const [sourceInfo, destInfo] = await Promise.all([
-    connection.getAccountInfo(source),
-    connection.getAccountInfo(destination),
-  ]);
-
-  if (!sourceInfo) {
-    throw new Error("No SOLAX token account — buy SOLAX on pump.fun first");
-  }
-
+  const destInfo = await connection.getAccountInfo(destination);
   if (!destInfo) {
     tx.add(
       createAssociatedTokenAccountInstruction(
@@ -98,7 +100,8 @@ export async function verifySolaxBurnTransfer(
   const mint = TOKEN_MINT.toBase58();
   const ownerStr = owner.toBase58();
   const burnAta = burnWalletAta().toBase58();
-  const sourceAta = playerAta(owner).toBase58();
+
+  const sourceAta = (await findSolaxTokenAccount(connection, owner))?.account.toBase58();
 
   for (let attempt = 0; attempt < 4; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));

@@ -7,7 +7,7 @@ import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import type { WalletError } from "@solana/wallet-adapter-base";
 import { RPC_URL } from "@/utils/anchor";
 import { BurnerWalletAdapter } from "@/utils/burnerWallet";
-import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets";
+import { PhantomWalletAdapter, SolflareWalletAdapter } from "@solana/wallet-adapter-wallets";
 require("@solana/wallet-adapter-react-ui/styles.css");
 
 const WalletContextProvider: FC<{ children: ReactNode }> = ({ children }) => {
@@ -19,7 +19,7 @@ const WalletContextProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
   // Phantom for real wallets; Burner for local testing without an extension.
   const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new BurnerWalletAdapter()],
+    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter(), new BurnerWalletAdapter()],
     [],
   );
 

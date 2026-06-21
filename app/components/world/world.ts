@@ -60,7 +60,9 @@ export type WorldApi = {
   /** Buy `blocks` × 10 energy at 100k SOLAX each (burned). Returns false if too poor. */
   buyEnergy: (blocks: number) => Promise<boolean>;
   setActive: (id: number) => void;
-  toast: (msg: string) => void;
+  toast: (msg: string, opts?: { critical?: boolean }) => void;
+  /** Force-refresh on-chain SOLAX balance into the HUD. */
+  refreshSolax: () => Promise<number>;
   /** Track global SOLAX sunk (spent = burned for every in-game sink). */
   recordEconomy: (amount: number) => void;
   /** Unix ms — last free DNA bonus claim (undefined = never claimed). */

@@ -20,13 +20,30 @@ export async function sendWalletTransaction(
   tx.recentBlockhash = blockhash;
 
   let sig: TransactionSignature;
+
   if (wallet.sendTransaction) {
-    sig = await wallet.sendTransaction(tx, connection, { skipPreflight: false, preflightCommitment: "confirmed" });
+    try {
+      // skipPreflight avoids RPC simulation failures blocking the wallet popup.
+      sig = await wallet.sendTransaction(tx, connection, {
+        skipPreflight: true,
+        preflightCommitment: "confirmed",
+        maxRetries: 3,
+      });
+    } catch (firstErr) {
+      console.warn("[wallet-tx] skipPreflight send failed, retrying with preflight", firstErr);
+      sig = await wallet.sendTransaction(tx, connection, {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      });
+    }
   } else if (wallet.signTransaction) {
     const signed = await wallet.signTransaction(tx);
-    sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+    sig = await connection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: true,
+      maxRetries: 3,
+    });
   } else {
-    throw new Error("Wallet cannot sign transactions");
+    throw new Error("Wallet cannot sign transactions — reconnect your wallet");
   }
 
   await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");

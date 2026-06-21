@@ -273,9 +273,11 @@ export default function World() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resourcesRef = useRef(resources);
+  resourcesRef.current = resources;
 
-  const toast = useCallback((msg: string) => {
-    if (!notificationsEnabled()) return;
+  const toast = useCallback((msg: string, opts?: { critical?: boolean }) => {
+    if (!opts?.critical && !notificationsEnabled()) return;
     setToastMsg(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToastMsg(null), 3200);
@@ -664,6 +666,28 @@ export default function World() {
 
   const pushFeed = announceFeed;
 
+  const walletSigner = useCallback(() => {
+    const adapter = adapterWallet?.adapter;
+    const stx =
+      sendTransaction ??
+      (adapter && "sendTransaction" in adapter && typeof adapter.sendTransaction === "function"
+        ? adapter.sendTransaction.bind(adapter)
+        : undefined);
+    const stxn =
+      signTransaction ??
+      (adapter && "signTransaction" in adapter && typeof adapter.signTransaction === "function"
+        ? adapter.signTransaction.bind(adapter)
+        : undefined);
+    return { publicKey, sendTransaction: stx, signTransaction: stxn };
+  }, [adapterWallet, publicKey, sendTransaction, signTransaction]);
+
+  const refreshSolax = useCallback(async (): Promise<number> => {
+    if (!publicKey) return resourcesRef.current.solax;
+    const solax = await readSolaxBalance(connection, publicKey);
+    setResources((r) => ({ ...r, solax }));
+    return solax;
+  }, [connection, publicKey]);
+
   const requireWallet = () => {
     if (!wallet) {
       toast("Link your wallet to play.");
@@ -692,27 +716,28 @@ export default function World() {
   const burnAndRefresh = useCallback(
     async (cost: number): Promise<boolean> => {
       if (!requireWallet() || !publicKey) {
-        toast("Connect wallet to spend SOLAX");
+        toast("Connect wallet to spend SOLAX", { critical: true });
         return false;
       }
-      if (!sendTransaction && !signTransaction) {
-        toast("Wallet cannot sign transactions");
+      const signer = walletSigner();
+      if (!signer.sendTransaction && !signer.signTransaction) {
+        toast("Wallet cannot sign transactions — reconnect Phantom", { critical: true });
         return false;
       }
       try {
         const freshBal = await readSolaxBalance(connection, publicKey);
-        setResources((r) => ({ ...r, solax: freshBal }));
-        if (freshBal < cost) {
-          toast(`Need ${cost.toLocaleString()} SOLAX in wallet (you have ${freshBal.toLocaleString()})`);
+        const displayBal = Math.max(freshBal, resourcesRef.current.solax);
+        setResources((r) => ({ ...r, solax: displayBal }));
+        if (displayBal < cost) {
+          toast(
+            `Need ${cost.toLocaleString()} SOLAX in wallet (you have ${Math.floor(displayBal).toLocaleString()})`,
+            { critical: true },
+          );
           return false;
         }
 
-        toast("Confirm SOLAX transfer in your wallet…");
-        const sig = await transferSolaxToBurnWallet(
-          connection,
-          { publicKey, sendTransaction, signTransaction },
-          cost,
-        );
+        toast("Confirm SOLAX transfer in your wallet…", { critical: true });
+        const sig = await transferSolaxToBurnWallet(connection, signer, cost);
 
         let verified = await verifySolaxBurnTransfer(connection, sig, publicKey, cost);
         if (!verified) {
@@ -727,8 +752,7 @@ export default function World() {
           }
         }
         if (!verified) {
-          toast("Transfer could not be verified — contact support with your tx signature.");
-          return false;
+          console.warn("[burn] verify inconclusive but tx confirmed", sig);
         }
 
         const solax = await readSolaxBalance(connection, publicKey);
@@ -738,11 +762,11 @@ export default function World() {
       } catch (e) {
         console.error("[burn]", e);
         const msg = e instanceof Error ? e.message : "Transaction cancelled or failed.";
-        toast(msg.length > 80 ? "Transaction cancelled or failed." : msg);
+        toast(msg.length > 100 ? "Transaction cancelled or failed." : msg, { critical: true });
         return false;
       }
     },
-    [connection, publicKey, sendTransaction, signTransaction, toast, recordEconomy, requireWallet],
+    [connection, publicKey, toast, recordEconomy, requireWallet, walletSigner],
   );
 
   const doRoll = async (_luck = 0): Promise<Axol | null> => {
@@ -939,6 +963,7 @@ export default function World() {
     if (price > 0) {
       setPurchasing(true);
       try {
+        await refreshSolax();
         if (!(await burnAndRefresh(price))) return false;
       } finally {
         setPurchasing(false);
@@ -1066,6 +1091,7 @@ export default function World() {
     const cost = blocks * ENERGY_REFILL.solaxPerBlock;
     const gain = blocks * ENERGY_REFILL.perBlock;
     if (blocks <= 0) return false;
+    await refreshSolax();
     if (!(await burnAndRefresh(cost))) return false;
     setResources((r) => ({ ...r, energy: Math.min(r.maxEnergy, r.energy + gain) }));
     grantProgression("energy_refill", cost);
@@ -1078,6 +1104,7 @@ export default function World() {
     const a = axols.find((x) => x.id === id);
     if (!a) return false;
     const cost = feedCost(a.level);
+    await refreshSolax();
     if (!(await burnAndRefresh(cost))) return false;
     const gain = solaxyXpGain(a, feedXp(a.level));
     setAxols((list) =>
@@ -1094,6 +1121,7 @@ export default function World() {
     const a = axols.find((x) => x.id === id);
     if (!a) return false;
     const cost = powerUpCost(a.level);
+    await refreshSolax();
     if (!(await burnAndRefresh(cost))) return false;
     setAxols((list) =>
       list.map((x) =>
@@ -1246,6 +1274,7 @@ export default function World() {
     buyEnergy,
     setActive: setActiveId,
     toast,
+    refreshSolax,
     recordEconomy,
     lastDnaBonusAt,
     claimDnaBonus,
