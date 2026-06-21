@@ -556,8 +556,8 @@ export function seedFeed(): FeedItem[] {
     { id: feedId++, who: "luna.sol", what: "rolled a Rare Bug!", color: "#a779ff", t: "15m" },
   ];
 }
-export function feedItem(what: string, color = "#a463ff"): FeedItem {
-  return { id: feedId++, who: "you", what, color, t: "now" };
+export function feedItem(who: string, what: string, color = "#a463ff"): FeedItem {
+  return { id: feedId++, who, what, color, t: "now" };
 }
 
 const PLAYERS = ["james.sol", "sarah.sol", "mike.sol", "luna.sol", "kai.sol", "nova.sol", "milo.sol", "yuki.sol", "zara.sol", "dex.sol", "remy.sol", "tess.sol"];

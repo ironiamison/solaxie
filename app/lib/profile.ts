@@ -28,8 +28,29 @@ export type TrainerProfile = {
   chestWins: number;
   chestTarget: number;
   chestLevel: number;
+  /** False until the player picks a trainer name on first login. */
+  usernameSet?: boolean;
 };
 
+/** Brand-new wallet — level 1, unranked, username required. */
+export const STARTER_PROFILE: TrainerProfile = {
+  name: "",
+  empireName: "",
+  avatarId: "bird",
+  level: 1,
+  xp: 0,
+  xpToNext: 100,
+  league: "No Rank",
+  trophies: 0,
+  leagueMax: 400,
+  rank: 0,
+  chestWins: 0,
+  chestTarget: 10,
+  chestLevel: 1,
+  usernameSet: false,
+};
+
+/** Demo / legacy saves that already have a trainer identity. */
 export const DEFAULT_PROFILE: TrainerProfile = {
   name: "SolanaKid",
   empireName: "SolanaKid Empire",
@@ -44,7 +65,29 @@ export const DEFAULT_PROFILE: TrainerProfile = {
   chestWins: 6,
   chestTarget: 10,
   chestLevel: 8,
+  usernameSet: true,
 };
+
+export function needsUsername(profile: TrainerProfile): boolean {
+  if (profile.usernameSet === false) return true;
+  if (profile.usernameSet === true) return false;
+  return !profile.name.trim();
+}
+
+export function validateUsername(raw: string): string | null {
+  const name = raw.trim();
+  if (name.length < 3) return "At least 3 characters";
+  if (name.length > 16) return "Max 16 characters";
+  if (!/^[a-zA-Z0-9._]+$/.test(name)) return "Letters, numbers, dots and underscores only";
+  return null;
+}
+
+/** Normalize display name — append `.sol` when no domain suffix given. */
+export function formatTrainerName(raw: string): string {
+  const name = raw.trim();
+  if (!name) return "";
+  return name.includes(".") ? name : `${name}.sol`;
+}
 
 /** Circular PFP portraits — one per base class. */
 export const PFP_AVATARS: Record<AvatarId, { src: string; label: string; ring: string }> = {

@@ -21,6 +21,7 @@ export function ProfileDropdown({ world }: { world: WorldApi }) {
 
   const p = world.profile;
   const connected = !!world.wallet;
+  const displayName = connected ? (p.name.trim() || "Trainer") : "Guest";
   const pfp = avatarSrc(p.avatarId);
   const xpPct = Math.round((p.xp / p.xpToNext) * 100);
 
@@ -108,12 +109,18 @@ export function ProfileDropdown({ world }: { world: WorldApi }) {
                   </span>
                   <span className="absolute bottom-0.5 right-0.5 h-3.5 w-3.5 rounded-full border-2 border-ink-900 bg-emerald-400" />
                 </span>
-                <h2 className="mt-3 font-display text-xl font-extrabold text-white">{p.name}</h2>
+                <h2 className="mt-3 font-display text-xl font-extrabold text-white">{displayName}</h2>
                 <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
-                  <span className="flex items-center gap-1 rounded-full border border-amber-300/30 bg-amber-400/10 px-2.5 py-0.5 text-[0.66rem] font-extrabold text-amber-200">
-                    <img src="/rank-bronze.png" alt="" className="h-4 w-4 object-contain" />
-                    {p.league}
-                  </span>
+                  {p.league === "No Rank" ? (
+                    <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5 text-[0.66rem] font-extrabold text-white/50">
+                      No Rank
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 rounded-full border border-amber-300/30 bg-amber-400/10 px-2.5 py-0.5 text-[0.66rem] font-extrabold text-amber-200">
+                      <img src="/rank-bronze.png" alt="" className="h-4 w-4 object-contain" />
+                      {p.league}
+                    </span>
+                  )}
                   <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5 text-[0.66rem] font-bold text-white/75">
                     {p.trophies.toLocaleString()} trophies
                   </span>
@@ -213,7 +220,7 @@ export function ProfileDropdown({ world }: { world: WorldApi }) {
         </span>
         <span className="hidden min-w-0 flex-col items-start leading-tight sm:flex">
           <span className="flex items-center gap-1.5">
-            <span className="font-display text-[0.82rem] font-extrabold text-white">{connected ? p.name : "Guest"}</span>
+            <span className="font-display text-[0.82rem] font-extrabold text-white">{displayName}</span>
             {connected ? (
               <span className="rounded-full bg-brand-500/25 px-1.5 py-px text-[0.58rem] font-extrabold text-brand-200">Lv.{p.level}</span>
             ) : (
@@ -223,7 +230,7 @@ export function ProfileDropdown({ world }: { world: WorldApi }) {
           <span className="text-[0.6rem] font-bold text-amber-200/90">{connected ? p.league : "Wallet not linked"}</span>
         </span>
         <span className="flex flex-col leading-tight sm:hidden">
-          <span className="font-display text-[0.72rem] font-extrabold text-white">{connected ? `${p.name} · Lv.${p.level}` : "Guest · Tutorial"}</span>
+          <span className="font-display text-[0.72rem] font-extrabold text-white">{connected ? `${displayName} · Lv.${p.level}` : "Guest · Tutorial"}</span>
           <span className="text-[0.54rem] font-bold text-amber-200/90">{connected ? p.league : "Link wallet"}</span>
         </span>
         <Chevron open={open} />

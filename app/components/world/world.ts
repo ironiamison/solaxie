@@ -21,10 +21,14 @@ export type WorldApi = {
   activeId: number | null;
 
   profile: TrainerProfile;
+  needsUsername: boolean;
+  setUsername: (name: string) => void;
   setAvatarId: (id: AvatarId) => void;
   setEmpireName: (name: string) => void;
   battleHistory: BattleHistoryEntry[];
   recordBattle: (entry: Omit<BattleHistoryEntry, "id">) => void;
+  /** Broadcast an action to the global live feed. */
+  announceFeed: (what: string, color?: string) => void;
 
   screen: Screen;
   setScreen: (s: Screen) => void;

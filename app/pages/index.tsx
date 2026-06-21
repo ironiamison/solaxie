@@ -11,7 +11,6 @@ import {
   FeedItem,
   Resources,
   STARTING_RESOURCES,
-  ambientFeed,
   axolSprite,
   breedAxol,
   withCosmetic,
@@ -21,7 +20,6 @@ import {
   resolveBattle,
   rollRarity,
   seedAxols,
-  seedFeed,
   wildAxol,
   xpNeeded,
   feedCost,
@@ -40,8 +38,9 @@ import {
   type GameSave,
 } from "@/lib/save";
 import { createChainClient } from "@/lib/chain";
+import { fetchGlobalFeed, postGlobalFeed } from "@/lib/global-feed";
 import { sfx } from "@/lib/sfx";
-import { BreedModal } from "@/components/world/modals";
+import { BreedModal, UsernameModal } from "@/components/world/modals";
 import Atmosphere from "@/components/world/Atmosphere";
 import type { Screen, WorldApi } from "@/components/world/world";
 import CollectionScreen from "@/components/world/screens/CollectionScreen";
@@ -53,7 +52,7 @@ import TutorialScreen from "@/components/world/screens/TutorialScreen";
 import { ConnectWalletModal } from "@/components/world/ConnectWalletModal";
 import { ProfileDropdown } from "@/components/world/ProfileDropdown";
 import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile";
-import { DEFAULT_PROFILE } from "@/lib/profile";
+import { STARTER_PROFILE, needsUsername } from "@/lib/profile";
 
 type Target = Screen | "breed";
 
@@ -91,7 +90,7 @@ function loggedOutSave(): GameSave {
   return buildSave({
     axols: [],
     resources: { solax: 0, dna: 0, eggs: 0, energy: 0, maxEnergy: 100, streak: 0 },
-    profile: DEFAULT_PROFILE,
+    profile: STARTER_PROFILE,
     quests: { rolls: 0, breeds: 0, wins: 0 },
     battleHistory: [],
     activeId: null,
@@ -107,7 +106,7 @@ function freshSave(): GameSave {
   return buildSave({
     axols: seed,
     resources: STARTING_RESOURCES,
-    profile: DEFAULT_PROFILE,
+    profile: { ...STARTER_PROFILE },
     quests: { rolls: 0, breeds: 0, wins: 0 },
     battleHistory: [],
     activeId: seed[0]?.id ?? null,
@@ -180,7 +179,9 @@ export default function World() {
   const [walletFull, setWalletFull] = useState<string | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const loadedWalletRef = useRef<string | null>(null);
-  const [profile, setProfile] = useState<TrainerProfile>(DEFAULT_PROFILE);
+  const [profile, setProfile] = useState<TrainerProfile>(STARTER_PROFILE);
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
   const [battleHistory, setBattleHistory] = useState<BattleHistoryEntry[]>([]);
   const battleId = useRef(1);
   const [quests, setQuests] = useState({ rolls: 0, breeds: 0, wins: 0 });
@@ -241,7 +242,7 @@ export default function World() {
     }
     setWallet(shortAddr(walletAddress));
     setWalletFull(walletAddress);
-    setFeed(seedFeed());
+    void fetchGlobalFeed().then(setFeed).catch(() => {});
     setScreen("home");
     setBreedOpen(false);
     sfx.startAmbient();
@@ -290,23 +291,35 @@ export default function World() {
     };
   }, [mounted, walletFull, axols, resources, profile, quests, battleHistory, activeId, selectedId]);
 
-  // Keep the live feed populated when logged in.
+  // Poll the global live feed (shared by all players).
   useEffect(() => {
     if (!wallet) return;
-    let timer: ReturnType<typeof setTimeout>;
-    const tick = () => {
-      setFeed((f) => [ambientFeed(), ...f].slice(0, 12));
-      timer = setTimeout(tick, 4500 + Math.random() * 4000);
+    let cancelled = false;
+    const load = () => {
+      void fetchGlobalFeed()
+        .then((items) => { if (!cancelled) setFeed(items); })
+        .catch(() => {});
     };
-    timer = setTimeout(tick, 3500);
-    return () => clearTimeout(timer);
+    load();
+    const iv = setInterval(load, 4000);
+    return () => { cancelled = true; clearInterval(iv); };
   }, [wallet]);
 
-  const pushFeed = (what: string, color?: string) => setFeed((f) => [feedItem(what, color), ...f].slice(0, 10));
+  const announceFeed = useCallback((what: string, color = "#a463ff") => {
+    const who = profileRef.current.name.trim() || "Trainer";
+    setFeed((f) => [feedItem(who, what, color), ...f.filter((x) => x.t !== "now" || x.who !== who || x.what !== what)].slice(0, 12));
+    void postGlobalFeed({ who, what, color, wallet: walletFull ?? undefined });
+  }, [walletFull]);
+
+  const pushFeed = announceFeed;
 
   const requireWallet = () => {
     if (!wallet) {
       toast("Link your wallet to play.");
+      return false;
+    }
+    if (needsUsername(profileRef.current)) {
+      toast("Pick a trainer name first.");
       return false;
     }
     return true;
@@ -415,8 +428,8 @@ export default function World() {
       });
     }
 
-    if (label && price > 0 && itemId) {
-      // Market screens show their own toast after grant side-effects.
+    if (label && price > 0) {
+      announceFeed(`bought ${label}!`, "#2fe0cf");
     }
 
     return true;
@@ -434,6 +447,7 @@ export default function World() {
     const gain = blocks * ENERGY_REFILL.perBlock;
     if (resources.solax < cost || blocks <= 0) return false;
     setResources((r) => ({ ...r, solax: r.solax - cost, energy: Math.min(r.maxEnergy, r.energy + gain) }));
+    announceFeed(`refilled ${gain} energy`, "#ffd24a");
     return true;
   };
 
@@ -454,6 +468,7 @@ export default function World() {
         return { ...x, xp, level };
       })
     );
+    announceFeed(`fed ${CLASS_META[a.cls].name} #${a.id}`, CLASS_META[a.cls].color);
     return true;
   };
 
@@ -480,7 +495,20 @@ export default function World() {
           : x
       )
     );
+    announceFeed(`powered up ${CLASS_META[a.cls].name} #${a.id} to Lv.${a.level + 1}!`, CLASS_META[a.cls].color);
     return true;
+  };
+
+  const setUsername = (name: string) => {
+    const base = name.split(".")[0] || name;
+    setProfile((p) => ({
+      ...p,
+      name,
+      empireName: `${base} Empire`,
+      usernameSet: true,
+    }));
+    toast(`Welcome, ${name}!`);
+    announceFeed("joined Solaxie!", "#c08bff");
   };
 
   const world: WorldApi = {
@@ -517,6 +545,8 @@ export default function World() {
       toast("Disconnected. Link your wallet to continue playing.");
     },
     profile,
+    needsUsername: needsUsername(profile),
+    setUsername,
     setAvatarId: (id: AvatarId) => {
       setProfile((p) => ({ ...p, avatarId: id }));
       toast("Profile icon updated!");
@@ -531,8 +561,12 @@ export default function World() {
           chestWins: Math.min(p.chestTarget, p.chestWins + 1),
           trophies: Math.max(0, p.trophies + entry.trophiesDelta),
         }));
+        announceFeed(`won a battle with ${entry.axolName}!`, CLASS_META[entry.axolCls].color);
+      } else {
+        announceFeed(`lost a battle vs ${entry.opponent}`, "#ff6b6b");
       }
     },
+    announceFeed,
     activeId,
     screen,
     setScreen: (s) => {
@@ -648,6 +682,8 @@ export default function World() {
       <BottomNav current={screen} onNav={setScreen} />
 
       {breedOpen && <BreedModal axols={axols} resources={resources} onBreed={doBreed} onClose={() => setBreedOpen(false)} />}
+
+      {needsUsername(profile) && <UsernameModal onSubmit={setUsername} />}
 
       <Toast msg={toastMsg} />
       <ConnectWalletModal open={walletModalOpen} onClose={() => setWalletModalOpen(false)} onError={toast} />
@@ -917,7 +953,7 @@ function FeedCard({ feed }: { feed: FeedItem[] }) {
     <div className="glass rounded-3xl p-4 shadow-panel">
       <div className="mb-2 text-[0.7rem] font-extrabold uppercase tracking-widest text-brand-300">Live Feed</div>
       <div className="space-y-1">
-        {feed.slice(0, 5).map((f) => (
+        {feed.slice(0, 6).map((f) => (
           <div key={f.id} className="flex items-baseline justify-between gap-2">
             <p className="truncate text-[0.72rem] text-white/90">
               <b style={{ color: f.color }}>{f.who}</b> {f.what}

@@ -13,6 +13,7 @@ import {
   possibleElements,
 } from "@/lib/game";
 import { sfx } from "@/lib/sfx";
+import { formatTrainerName, validateUsername } from "@/lib/profile";
 import { UI } from "@/lib/ui-icons";
 import { AxolArt, Modal, PrimaryButton, RarityTag, Stars, StatRow } from "./primitives";
 import { CloseIcon, GameIcon } from "./GameIcon";
@@ -839,5 +840,68 @@ export function CollectionModal({ axols, onClose }: { axols: Axol[]; onClose: ()
         </div>
       )}
     </Modal>
+  );
+}
+
+/** First-login gate — player must pick a trainer name before playing. */
+export function UsernameModal({
+  onSubmit,
+}: {
+  onSubmit: (name: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const submit = () => {
+    const err = validateUsername(value);
+    if (err) {
+      setError(err);
+      return;
+    }
+    sfx.click();
+    onSubmit(formatTrainerName(value));
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+      <div className="relative glass-strong w-full max-w-md rounded-3xl p-6 shadow-panel animate-pop">
+        <div className="flex flex-col items-center text-center">
+          <img src="/avatar-axolotl.png" alt="" className="h-20 w-20 rounded-full ring-4 ring-brand-400/40" draggable={false} />
+          <h2 className="mt-4 font-display text-2xl font-extrabold text-white">Choose Your Name</h2>
+          <p className="mt-2 text-sm text-white/60">
+            Welcome, Trainer! Pick a name for the global live feed — everyone on Solaxie will see your adventures.
+          </p>
+        </div>
+        <div className="mt-5">
+          <label className="mb-1.5 block text-left text-[0.65rem] font-extrabold uppercase tracking-widest text-brand-200/80">
+            Trainer name
+          </label>
+          <div className="flex overflow-hidden rounded-2xl border border-white/15 bg-black/40">
+            <input
+              ref={inputRef}
+              value={value}
+              onChange={(e) => { setValue(e.target.value); setError(null); }}
+              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+              placeholder="luna"
+              maxLength={16}
+              className="flex-1 bg-transparent px-4 py-3 font-display text-lg font-extrabold text-white outline-none placeholder:text-white/25"
+            />
+            <span className="grid place-items-center border-l border-white/10 bg-white/5 px-3 text-sm font-bold text-white/45">.sol</span>
+          </div>
+          {error ? <p className="mt-2 text-left text-xs font-bold text-rose-400">{error}</p> : (
+            <p className="mt-2 text-left text-[0.65rem] text-white/40">3–16 characters · shown in Live Feed worldwide</p>
+          )}
+        </div>
+        <PrimaryButton className="mt-5 w-full" onClick={submit} disabled={value.trim().length < 3}>
+          Enter the Pond
+        </PrimaryButton>
+      </div>
+    </div>
   );
 }
