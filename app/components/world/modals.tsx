@@ -145,7 +145,7 @@ export function RollModal({
 
 // --------------------------- Breed (Nursery Tree) --------------------------
 
-const FREE_BREEDS = 2;                       // free breeds per window
+const FREE_BREEDS = 6;                       // free breeds per window (2 base + 4 launch gift)
 const BREED_WINDOW_MS = 5 * 60 * 60 * 1000;  // breeds reset every 5 hours
 const OVERRIDE_COST = 500_000;               // SOLAX to breed past the free limit
 

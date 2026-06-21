@@ -179,7 +179,7 @@ function mixGenes(a: Genes, b: Genes): Genes {
 
 // ---- Axol -----------------------------------------------------------------
 
-export const MAX_BREED_COUNT = 7;
+export const MAX_BREED_COUNT = 11;
 
 export type Axol = {
   id: number;

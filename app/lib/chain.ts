@@ -1,10 +1,8 @@
 import { AnchorProvider, BN } from "@coral-xyz/anchor";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
   createBurnInstruction,
-  getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
   Connection,
@@ -15,8 +13,10 @@ import type { AnchorWallet } from "@solana/wallet-adapter-react";
 import {
   TOKEN_DECIMALS,
   TOKEN_MINT,
+  TOKEN_PROGRAM_FOR_MINT,
   axolPDA,
   configPDA,
+  playerAta,
   playerPDA,
   getProgram,
   type PlayerData,
@@ -56,14 +56,20 @@ export function createChainClient(
   const program = getProgram(provider);
   const owner = wallet.publicKey;
 
-  const playerAta = () => getAssociatedTokenAddressSync(TOKEN_MINT, owner);
+  const playerTokenAta = () => playerAta(owner);
 
-  async function addAtaIfNeeded(tx: Transaction): Promise<ReturnType<typeof playerAta>> {
-    const ata = playerAta();
+  async function addAtaIfNeeded(tx: Transaction): Promise<ReturnType<typeof playerTokenAta>> {
+    const ata = playerTokenAta();
     const ataInfo = await connection.getAccountInfo(ata);
     if (!ataInfo) {
       tx.add(
-        createAssociatedTokenAccountInstruction(owner, ata, owner, TOKEN_MINT),
+        createAssociatedTokenAccountInstruction(
+          owner,
+          ata,
+          owner,
+          TOKEN_MINT,
+          TOKEN_PROGRAM_FOR_MINT,
+        ),
       );
     }
     return ata;
@@ -80,10 +86,17 @@ export function createChainClient(
 
   async function fetchTokenBalance(): Promise<number> {
     try {
-      const bal = await connection.getTokenAccountBalance(playerAta());
+      const bal = await connection.getTokenAccountBalance(playerTokenAta());
       return bal.value.uiAmount ?? 0;
     } catch {
-      return 0;
+      try {
+        const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint: TOKEN_MINT });
+        if (resp.value.length === 0) return 0;
+        const info = resp.value[0].account.data.parsed.info.tokenAmount;
+        return info.uiAmount ?? Number(info.amount) / 10 ** info.decimals;
+      } catch {
+        return 0;
+      }
     }
   }
 
@@ -128,7 +141,7 @@ export function createChainClient(
     if (amount <= BigInt(0)) throw new Error("Invalid burn amount");
     const tx = new Transaction();
     const ata = await addAtaIfNeeded(tx);
-    tx.add(createBurnInstruction(TOKEN_MINT, ata, owner, amount));
+    tx.add(createBurnInstruction(TOKEN_MINT, ata, owner, amount, [], TOKEN_PROGRAM_FOR_MINT));
     const sig = await provider.sendAndConfirm(tx, [], { commitment: "confirmed" });
     console.info("[chain] burn", priceWhole, sig);
     return sig;
@@ -151,9 +164,9 @@ export function createChainClient(
         player: playerPDA(owner),
         gameData: configPDA,
         tokenMint: TOKEN_MINT,
-        playerTokenAccount: playerAta(),
+        playerTokenAccount: playerTokenAta(),
         signer: owner,
-        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_FOR_MINT,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
@@ -177,9 +190,9 @@ export function createChainClient(
         gameData: configPDA,
         tokenMint: TOKEN_MINT,
         axol: axolPDA(axolId),
-        playerTokenAccount: playerAta(),
+        playerTokenAccount: playerTokenAta(),
         signer: owner,
-        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_FOR_MINT,
         systemProgram: SystemProgram.programId,
       })
       .instruction();
@@ -203,9 +216,9 @@ export function createChainClient(
         parentA: axolPDA(parentAId),
         parentB: axolPDA(parentBId),
         child: axolPDA(childId),
-        playerTokenAccount: playerAta(),
+        playerTokenAccount: playerTokenAta(),
         signer: owner,
-        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_FOR_MINT,
         systemProgram: SystemProgram.programId,
       })
       .instruction();

@@ -74,9 +74,7 @@ import { ConnectWalletModal } from "@/components/world/ConnectWalletModal";
 import { ProfileDropdown } from "@/components/world/ProfileDropdown";
 import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile";
 import { STARTER_PROFILE, needsUsername, normalizeProfile, formatTrainerName } from "@/lib/profile";
-import {
-  applyProgressEvent,
-  applySolaxyLevelUps,
+import { applyLaunchAirdrop } from "@/lib/airdrops";
   dailyQuestsComplete,
   utcDayKey,
   type ProgressEvent,
@@ -331,7 +329,11 @@ export default function World() {
       const metaPond = cloud?.pondLayouts ?? walletSave?.pondLayouts ?? walletSave?.pondLayout;
       const metaResources = walletSave?.resources ?? STARTING_RESOURCES;
 
+      let profileDraft = metaProfile;
+      let resourcesDraft = { ...metaResources };
+      let axolsDraft: Axol[] = walletSave?.axols.map(withCosmetic) ?? [];
       let ready = false;
+
       if (chainClient) {
         try {
           ready = await chainClient.isReady();
@@ -340,37 +342,89 @@ export default function World() {
             const trainerName = metaProfile.name?.trim() || "Trainer";
             await chainClient.ensurePlayer(trainerName);
             const state = await chainClient.refreshState();
-            setAxols(state.axols.map(withCosmetic));
-            setResources({
+            axolsDraft = state.axols.map(withCosmetic);
+            resourcesDraft = {
               solax: state.solax,
               dna: metaResources.dna,
               eggs: metaResources.eggs,
               energy: state.energy,
               maxEnergy: 100,
               streak: metaResources.streak,
-            });
+            };
             if (state.axols.length > 0 && metaActive == null) {
               setActiveId(state.axols[0].id);
               setSelectedId(state.axols[0].id);
             }
           } else if (walletSave) {
-            apply(walletSave);
+            profileDraft = walletSave.profile;
+            resourcesDraft = { ...walletSave.resources };
+            axolsDraft = walletSave.axols.map(withCosmetic);
+            primeIds(axolsDraft);
+            battleId.current = walletSave.battleIdCounter;
           } else {
-            apply(freshSave());
+            const fresh = freshSave();
+            profileDraft = fresh.profile;
+            resourcesDraft = { ...fresh.resources };
+            axolsDraft = fresh.axols.map(withCosmetic);
+            primeIds(axolsDraft);
+            battleId.current = fresh.battleIdCounter;
+            if (fresh.activeId != null) {
+              setActiveId(fresh.activeId);
+              setSelectedId(fresh.selectedId);
+            }
           }
         } catch (e) {
           console.warn("[chain] hydrate skipped:", e);
           setChainReady(false);
-          if (walletSave) apply(walletSave);
-          else apply(freshSave());
+          if (walletSave) {
+            profileDraft = walletSave.profile;
+            resourcesDraft = { ...walletSave.resources };
+            axolsDraft = walletSave.axols.map(withCosmetic);
+            primeIds(axolsDraft);
+            battleId.current = walletSave.battleIdCounter;
+          } else {
+            const fresh = freshSave();
+            profileDraft = fresh.profile;
+            resourcesDraft = { ...fresh.resources };
+            axolsDraft = fresh.axols.map(withCosmetic);
+            primeIds(axolsDraft);
+            battleId.current = fresh.battleIdCounter;
+          }
         }
       } else if (walletSave) {
-        apply(walletSave);
+        profileDraft = walletSave.profile;
+        resourcesDraft = { ...walletSave.resources };
+        axolsDraft = walletSave.axols.map(withCosmetic);
+        primeIds(axolsDraft);
+        battleId.current = walletSave.battleIdCounter;
       } else {
-        apply(freshSave());
+        const fresh = freshSave();
+        profileDraft = fresh.profile;
+        resourcesDraft = { ...fresh.resources };
+        axolsDraft = fresh.axols.map(withCosmetic);
+        primeIds(axolsDraft);
+        battleId.current = fresh.battleIdCounter;
+        if (fresh.activeId != null) {
+          setActiveId(fresh.activeId);
+          setSelectedId(fresh.selectedId);
+        }
       }
 
-      setProfile(normalizeProfile(metaProfile));
+      if (chainClient) {
+        const solax = await chainClient.fetchTokenBalance();
+        resourcesDraft = { ...resourcesDraft, solax };
+      }
+
+      const gift = applyLaunchAirdrop(profileDraft, resourcesDraft, axolsDraft);
+      if (gift.applied) {
+        profileDraft = gift.profile;
+        resourcesDraft = gift.resources;
+        axolsDraft = gift.axols;
+      }
+
+      setAxols(axolsDraft);
+      setResources(resourcesDraft);
+      setProfile(normalizeProfile(profileDraft));
       setQuests(metaQuests);
       setBattleHistory(metaHistory);
       if (metaActive != null) setActiveId(metaActive);
@@ -380,14 +434,16 @@ export default function World() {
       if (cloud?.battleHistory) battleId.current = Math.max(battleId.current, ...metaHistory.map((b) => b.id), 0) + 1;
 
       const count = ready && chainClient
-        ? (await chainClient.fetchOwnedAxols()).length
-        : walletSave?.axols.length ?? 0;
+        ? axolsDraft.length
+        : walletSave?.axols.length ?? axolsDraft.length;
       toast(
-        count > 0
-          ? `Welcome back! ${count} Solax${count === 1 ? "y" : "ies"} on-chain.`
-          : ready
-            ? "Wallet linked! Mint your first Solaxy at the DNA Core."
-            : "Wallet linked! Your island awaits.",
+        gift.applied
+          ? "Launch gift! +5 eggs · +4 breeds per Solaxy"
+          : count > 0
+            ? `Welcome back! ${count} Solax${count === 1 ? "y" : "ies"} on-chain.`
+            : ready
+              ? "Wallet linked! Mint your first Solaxy at the DNA Core."
+              : "Wallet linked! Your island awaits.",
       );
     };
 

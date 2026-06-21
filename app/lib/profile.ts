@@ -34,6 +34,8 @@ export type TrainerProfile = {
   chestLevel: number;
   /** False until the player picks a trainer name on first login. */
   usernameSet?: boolean;
+  /** One-time grant ids already applied to this trainer. */
+  appliedAirdrops?: string[];
 };
 
 /** Retuned arena bands — faster early promotions (100 → 250 → 500 …). */

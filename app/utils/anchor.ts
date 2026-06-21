@@ -6,6 +6,7 @@ import { PublicKey } from "@solana/web3.js";
 import {
   getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import {
@@ -30,7 +31,13 @@ export const TOKEN_MINT = new PublicKey(
   process.env.NEXT_PUBLIC_TOKEN_MINT ?? tokenInfo.mint,
 );
 export const TOKEN_DECIMALS = tokenInfo.decimals;
-export { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID };
+
+/** SPL program that owns the game token mint (Token-2022 for pump.fun). */
+export const TOKEN_PROGRAM_FOR_MINT = new PublicKey(
+  (tokenInfo as { tokenProgram?: string }).tokenProgram ?? TOKEN_PROGRAM_ID,
+);
+
+export { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID };
 
 export function getProgram(provider: AnchorProvider): Program<Solaxie> {
   return new Program(idl as Solaxie, provider);
@@ -67,7 +74,7 @@ export function playerPDA(owner: PublicKey): PublicKey {
 }
 
 export function playerAta(owner: PublicKey): PublicKey {
-  return getAssociatedTokenAddressSync(TOKEN_MINT, owner);
+  return getAssociatedTokenAddressSync(TOKEN_MINT, owner, false, TOKEN_PROGRAM_FOR_MINT);
 }
 
 export function axolPDA(id: number | bigint | BN): PublicKey {
