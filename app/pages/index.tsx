@@ -770,15 +770,22 @@ export default function World() {
         return false;
       }
       try {
-        const held = await resolveSolaxTokenAccount(connection, publicKey);
-        const chainBal = held?.balance ?? 0;
+        const displayBal = await readSolaxBalance(connection, publicKey, resourcesRef.current.solax);
+        let held = await resolveSolaxTokenAccount(connection, publicKey);
+        if (!held && displayBal >= cost) {
+          await new Promise((r) => setTimeout(r, 500));
+          held = await resolveSolaxTokenAccount(connection, publicKey);
+        }
+        const chainBal = held?.balance ?? displayBal;
         setResources((r) => ({ ...r, solax: Math.max(chainBal, r.solax) }));
 
         if (!held || chainBal < cost) {
           toast(
             held
               ? `Need ${cost.toLocaleString()} SOLAX in wallet (you have ${Math.floor(chainBal).toLocaleString()})`
-              : "No SOLAX token account found — refresh or reconnect wallet",
+              : displayBal >= cost
+                ? "Still locating your SOLAX account — hard refresh and try again"
+                : "No SOLAX token account found — buy on pump.fun first",
             { critical: true },
           );
           return false;
