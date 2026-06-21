@@ -4,7 +4,7 @@ import type { PublicPlayer } from "@/lib/public-player";
 import type { PondLayout, PondSpotPct } from "@/lib/pond-layout";
 import type { PondLayouts } from "@/lib/pond-layouts";
 
-export type Screen = "home" | "collection" | "battle" | "market" | "dnacore" | "empire";
+export type Screen = "home" | "collection" | "battle" | "market" | "dnacore" | "empire" | "settings";
 
 export type Quests = { rolls: number; breeds: number; wins: number; claimedDay?: string };
 
@@ -74,7 +74,10 @@ export type WorldApi = {
   openPondArrange: (view: "home" | "collection") => void;
   closePondArrange: () => void;
   setPondSpot: (axolId: number, spot: PondSpotPct) => void;
+  spendDna: (amount: number) => boolean;
+  /** Consume one harbor booster per key (luck, epic, …). */
+  consumeHarborItems: (keys: string[]) => boolean;
+  resetPondLayout: () => void;
   /** True when the Anchor program is deployed — core loop uses on-chain txs. */
   chainReady: boolean;
-  resetPondLayout: () => void;
 };

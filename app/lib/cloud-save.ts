@@ -1,3 +1,4 @@
+import type { Axol, Resources } from "./game";
 import type { CloudSave } from "./cloud-save-store";
 import type { PondLayouts } from "./pond-layouts";
 import type { BattleHistoryEntry, TrainerProfile } from "./profile";
@@ -12,6 +13,8 @@ export type CloudSavePayload = {
   selectedId: number | null;
   lastDnaBonusAt?: number;
   pondLayouts?: PondLayouts;
+  axols?: Axol[];
+  resources?: Pick<Resources, "dna" | "eggs" | "energy" | "maxEnergy" | "streak" | "items">;
 };
 
 export async function fetchCloudSave(wallet: string): Promise<CloudSave | null> {

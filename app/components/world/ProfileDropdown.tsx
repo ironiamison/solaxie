@@ -145,7 +145,7 @@ export function ProfileDropdown({ world }: { world: WorldApi }) {
                 <ActionRow icon="/icon-collection.png" label="Inventory" onClick={() => { world.setScreen("collection"); close(); }} />
                 <ActionRow icon="/icon-arena.png" label="Battle History" onClick={() => { world.setScreen("empire"); close(); world.toast("Open Battle History tab in Empire Hall"); }} />
                 <ActionRow icon="/avatar-axolotl.png" label="Cosmetics" onClick={() => setView("cosmetics")} />
-                <ActionRow icon="/icon-energy.png" label="Settings" onClick={() => world.toast("Settings — coming in Version 1.3")} />
+                <ActionRow icon="/icon-energy.png" label="Settings" onClick={() => { world.setScreen("settings"); close(); }} />
               </div>
 
               {/* stats */}

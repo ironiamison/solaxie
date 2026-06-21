@@ -211,6 +211,8 @@ export type Resources = {
   energy: number;
   maxEnergy: number;
   streak: number;
+  /** Harbor boosters bought at Market (luck, epic, legend, cosmic). */
+  items: Record<string, number>;
 };
 
 export const COSTS = {
@@ -263,6 +265,7 @@ export const STARTING_RESOURCES: Resources = {
   energy: 100,
   maxEnergy: 100,
   streak: 12,
+  items: {},
 };
 
 const STATUSES = ["Sleeping", "Playing", "Fishing", "Splashing", "Napping", "Exploring"];

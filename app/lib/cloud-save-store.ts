@@ -1,4 +1,5 @@
 import { head, put } from "@vercel/blob";
+import type { Axol, Resources } from "./game";
 import type { PondLayouts } from "./pond-layouts";
 import type { BattleHistoryEntry, TrainerProfile } from "./profile";
 import type { Quests } from "@/components/world/world";
@@ -12,6 +13,10 @@ export type CloudSave = {
   selectedId: number | null;
   lastDnaBonusAt?: number;
   pondLayouts?: PondLayouts;
+  /** Full roster backup — restores progress if local storage is cleared. */
+  axols?: Axol[];
+  /** Off-chain resources (DNA, eggs, energy, items) — not SOLAX. */
+  resources?: Pick<Resources, "dna" | "eggs" | "energy" | "maxEnergy" | "streak" | "items">;
   updatedAt: number;
 };
 

@@ -17,6 +17,8 @@ import {
   playerAta,
 } from "@/utils/anchor";
 import { solaxPriceToBaseUnits } from "@/lib/token";
+import { sendWalletTransaction } from "@/lib/wallet-tx";
+import type { WalletContextState } from "@solana/wallet-adapter-react";
 
 /** Public burn sink — tokens sent here leave circulation (Solana incinerator). */
 export const SOLAX_BURN_WALLET = new PublicKey(
@@ -33,13 +35,15 @@ export function burnWalletAta(): PublicKey {
   );
 }
 
-/** Build + send a pump.fun SOLAX transfer to the burn wallet. */
+/** Transfer pump.fun SOLAX to the burn wallet. */
 export async function transferSolaxToBurnWallet(
   connection: Connection,
-  owner: PublicKey,
-  sendTransaction: (tx: Transaction) => Promise<TransactionSignature>,
+  wallet: Pick<WalletContextState, "publicKey" | "sendTransaction" | "signTransaction">,
   priceWhole: number,
 ): Promise<TransactionSignature> {
+  const owner = wallet.publicKey;
+  if (!owner) throw new Error("Wallet not connected");
+
   const amount = solaxPriceToBaseUnits(priceWhole, TOKEN_DECIMALS);
   if (amount <= BigInt(0)) throw new Error("Invalid burn amount");
 
@@ -47,7 +51,15 @@ export async function transferSolaxToBurnWallet(
   const destination = burnWalletAta();
   const tx = new Transaction();
 
-  const destInfo = await connection.getAccountInfo(destination);
+  const [sourceInfo, destInfo] = await Promise.all([
+    connection.getAccountInfo(source),
+    connection.getAccountInfo(destination),
+  ]);
+
+  if (!sourceInfo) {
+    throw new Error("No SOLAX token account — buy SOLAX on pump.fun first");
+  }
+
   if (!destInfo) {
     tx.add(
       createAssociatedTokenAccountInstruction(
@@ -72,13 +84,7 @@ export async function transferSolaxToBurnWallet(
     ),
   );
 
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-  tx.feePayer = owner;
-  tx.recentBlockhash = blockhash;
-
-  const sig = await sendTransaction(tx, connection, { skipPreflight: false });
-  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
-  return sig;
+  return sendWalletTransaction(connection, wallet, tx);
 }
 
 /** Confirm a tx moved at least `priceWhole` SOLAX from `owner` toward the burn wallet. */
@@ -94,45 +100,51 @@ export async function verifySolaxBurnTransfer(
   const burnAta = burnWalletAta().toBase58();
   const sourceAta = playerAta(owner).toBase58();
 
-  const tx = await connection.getParsedTransaction(signature, {
-    maxSupportedTransactionVersion: 0,
-    commitment: "confirmed",
-  });
-  if (!tx?.meta || tx.meta.err) return false;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
 
-  const pre = tx.meta.preTokenBalances ?? [];
-  const post = tx.meta.postTokenBalances ?? [];
+    const tx = await connection.getParsedTransaction(signature, {
+      maxSupportedTransactionVersion: 0,
+      commitment: "confirmed",
+    });
+    if (!tx?.meta || tx.meta.err) continue;
 
-  let fromOwner = BigInt(0);
-  let toBurn = BigInt(0);
+    const pre = tx.meta.preTokenBalances ?? [];
+    const post = tx.meta.postTokenBalances ?? [];
 
-  for (const preBal of pre) {
-    if (preBal.mint !== mint) continue;
-    const postBal = post.find((p) => p.accountIndex === preBal.accountIndex);
-    if (!postBal) continue;
+    let fromOwner = BigInt(0);
+    let toBurn = BigInt(0);
 
-    const preAmt = BigInt(preBal.uiTokenAmount?.amount ?? "0");
-    const postAmt = BigInt(postBal.uiTokenAmount?.amount ?? "0");
-    if (postAmt >= preAmt) continue;
+    for (const preBal of pre) {
+      if (preBal.mint !== mint) continue;
+      const postBal = post.find((p) => p.accountIndex === preBal.accountIndex);
+      if (!postBal) continue;
 
-    const delta = preAmt - postAmt;
-    const acct = accountAtIndex(tx, preBal.accountIndex);
+      const preAmt = BigInt(preBal.uiTokenAmount?.amount ?? "0");
+      const postAmt = BigInt(postBal.uiTokenAmount?.amount ?? "0");
+      if (postAmt >= preAmt) continue;
 
-    if (preBal.owner === ownerStr || acct === sourceAta) fromOwner += delta;
-    if (acct === burnAta) toBurn += delta;
+      const delta = preAmt - postAmt;
+      const acct = accountAtIndex(tx, preBal.accountIndex);
+
+      if (preBal.owner === ownerStr || acct === sourceAta) fromOwner += delta;
+      if (acct === burnAta) toBurn += delta;
+    }
+
+    for (const postBal of post) {
+      if (postBal.mint !== mint) continue;
+      const preBal = pre.find((p) => p.accountIndex === postBal.accountIndex);
+      if (preBal) continue;
+
+      const postAmt = BigInt(postBal.uiTokenAmount?.amount ?? "0");
+      const acct = accountAtIndex(tx, postBal.accountIndex);
+      if (acct === burnAta) toBurn += postAmt;
+    }
+
+    if (fromOwner >= minRaw || toBurn >= minRaw) return true;
   }
 
-  for (const postBal of post) {
-    if (postBal.mint !== mint) continue;
-    const preBal = pre.find((p) => p.accountIndex === postBal.accountIndex);
-    if (preBal) continue;
-
-    const postAmt = BigInt(postBal.uiTokenAmount?.amount ?? "0");
-    const acct = accountAtIndex(tx, postBal.accountIndex);
-    if (acct === burnAta) toBurn += postAmt;
-  }
-
-  return fromOwner >= minRaw || toBurn >= minRaw;
+  return false;
 }
 
 function accountAtIndex(

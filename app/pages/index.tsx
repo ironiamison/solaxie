@@ -31,6 +31,7 @@ import {
   primeIds,
   setIdCounter,
 } from "@/lib/game";
+import { MARKET_ITEM_EFFECTS, normalizeItems } from "@/lib/harbor-items";
 import {
   buildSave,
   loadWalletSave,
@@ -41,6 +42,7 @@ import {
 } from "@/lib/save";
 import { createChainClient } from "@/lib/chain";
 import { fetchCloudSave, postCloudSave } from "@/lib/cloud-save";
+import type { CloudSave } from "@/lib/cloud-save-store";
 import { fetchGlobalFeed, postGlobalFeed } from "@/lib/global-feed";
 import { recordEconomy as postEconomyStats } from "@/lib/global-stats";
 import { fetchPublicPlayer, syncPublicPlayer } from "@/lib/global-players";
@@ -69,6 +71,8 @@ import DnaCoreScreen from "@/components/world/screens/DnaCoreScreen";
 import ArenaScreen from "@/components/world/screens/ArenaScreen";
 import MarketScreen from "@/components/world/screens/MarketScreen";
 import EmpireScreen from "@/components/world/screens/EmpireScreen";
+import SettingsScreen from "@/components/world/screens/SettingsScreen";
+import { notificationsEnabled } from "@/components/world/screens/SettingsScreen";
 import TutorialScreen from "@/components/world/screens/TutorialScreen";
 import { ConnectWalletModal } from "@/components/world/ConnectWalletModal";
 import { ProfileDropdown } from "@/components/world/ProfileDropdown";
@@ -89,18 +93,39 @@ import {
   type ProgressEvent,
 } from "@/lib/progression";
 
-/** Prefer server-side RPC (Helius on Vercel); fall back to browser connection. */
+/** Prefer server + client RPC; take the higher balance (fixes Token-2022 / rate-limit glitches). */
 async function readSolaxBalance(connection: Connection, owner: PublicKey): Promise<number> {
-  try {
-    const res = await fetch(`/api/balance?wallet=${owner.toBase58()}`, { cache: "no-store" });
-    if (res.ok) {
-      const data = (await res.json()) as { solax?: number };
-      if (typeof data.solax === "number") return data.solax;
-    }
-  } catch {
-    // fall through to client RPC
+  const wallet = owner.toBase58();
+  const [apiBal, clientBal] = await Promise.all([
+    fetch(`/api/balance?wallet=${wallet}`, { cache: "no-store" })
+      .then(async (res) => (res.ok ? ((await res.json()) as { solax?: number }) : null))
+      .catch(() => null),
+    fetchWalletSolaxBalance(connection, owner).catch(() => 0),
+  ]);
+  const fromApi = typeof apiBal?.solax === "number" ? apiBal.solax : 0;
+  const fromClient = typeof clientBal === "number" ? clientBal : 0;
+  return Math.max(fromApi, fromClient);
+}
+
+function pickMostAxols(...lists: (Axol[] | undefined)[]): Axol[] {
+  const best = lists.filter((l) => l && l.length > 0).sort((a, b) => b!.length - a!.length)[0];
+  return best ?? [];
+}
+
+function mergeOffChainResources(
+  local: Resources | undefined,
+  cloud: CloudSave["resources"] | undefined,
+): Resources {
+  if (local && cloud) {
+    return normalizeResources({
+      ...cloud,
+      ...local,
+      items: { ...(cloud.items ?? {}), ...(local.items ?? {}) },
+    });
   }
-  return fetchWalletSolaxBalance(connection, owner);
+  if (local) return normalizeResources(local);
+  if (cloud) return normalizeResources({ ...STARTING_RESOURCES, ...cloud, solax: 0 });
+  return normalizeResources(STARTING_RESOURCES);
 }
 
 type Target = Screen | "breed";
@@ -130,7 +155,7 @@ const BUILDINGS: Building[] = [
 function loggedOutSave(): GameSave {
   return buildSave({
     axols: [],
-    resources: { solax: 0, dna: 0, eggs: 0, energy: 0, maxEnergy: 100, streak: 0 },
+    resources: { solax: 0, dna: 0, eggs: 0, energy: 0, maxEnergy: 100, streak: 0, items: {} },
     profile: STARTER_PROFILE,
     quests: { rolls: 0, breeds: 0, wins: 0 },
     battleHistory: [],
@@ -157,6 +182,14 @@ function freshSave(): GameSave {
   });
 }
 
+function normalizeResources(r: Resources): Resources {
+  return {
+    ...STARTING_RESOURCES,
+    ...r,
+    items: normalizeItems(r.items),
+  };
+}
+
 function applySave(
   save: GameSave,
   set: {
@@ -175,7 +208,7 @@ function applySave(
   setIdCounter(save.idCounter);
   primeIds(save.axols);
   set.setAxols(save.axols.map(withCosmetic));
-  set.setResources(save.resources);
+  set.setResources(normalizeResources(save.resources));
   set.setProfile(normalizeProfile(save.profile));
   set.setQuests(save.quests);
   set.setBattleHistory(save.battleHistory);
@@ -195,6 +228,7 @@ export default function World() {
     connect,
     disconnect,
     sendTransaction,
+    signTransaction,
     wallet: adapterWallet,
   } = useWallet();
   const walletAddress = publicKey?.toBase58() ?? null;
@@ -221,6 +255,8 @@ export default function World() {
   const [walletFull, setWalletFull] = useState<string | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const loadedWalletRef = useRef<string | null>(null);
+  /** Blocks auto-save until wallet hydrate finishes — prevents wiping saves on connect. */
+  const [saveReady, setSaveReady] = useState(false);
   const [profile, setProfile] = useState<TrainerProfile>(STARTER_PROFILE);
   const profileRef = useRef(profile);
   profileRef.current = profile;
@@ -239,6 +275,7 @@ export default function World() {
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toast = useCallback((msg: string) => {
+    if (!notificationsEnabled()) return;
     setToastMsg(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToastMsg(null), 3200);
@@ -334,11 +371,16 @@ export default function World() {
     if (!mounted || !isLinked || !walletAddress) return;
     if (loadedWalletRef.current === walletAddress) return;
     loadedWalletRef.current = walletAddress;
+    setSaveReady(false);
 
     const walletSave = loadWalletSave(walletAddress);
 
     const hydrate = async () => {
-      const cloud = await fetchCloudSave(walletAddress);
+      const [cloud, publicPlayer] = await Promise.all([
+        fetchCloudSave(walletAddress),
+        fetchPublicPlayer(walletAddress).catch(() => null),
+      ]);
+
       const metaProfile = cloud?.profile ?? walletSave?.profile ?? { ...STARTER_PROFILE };
       const metaQuestsRaw = cloud?.quests ?? walletSave?.quests ?? { rolls: 0, breeds: 0, wins: 0 };
       const day = utcDayKey();
@@ -347,15 +389,26 @@ export default function World() {
           ? { rolls: 0, breeds: 0, wins: 0 }
           : metaQuestsRaw;
       const metaHistory = cloud?.battleHistory ?? walletSave?.battleHistory ?? [];
-      const metaActive = cloud?.activeId ?? walletSave?.activeId ?? null;
-      const metaSelected = cloud?.selectedId ?? walletSave?.selectedId ?? null;
+      const metaActive = cloud?.activeId ?? walletSave?.activeId ?? publicPlayer?.activeId ?? null;
+      const metaSelected = cloud?.selectedId ?? walletSave?.selectedId ?? metaActive;
       const metaDnaBonus = cloud?.lastDnaBonusAt ?? walletSave?.lastDnaBonusAt;
       const metaPond = cloud?.pondLayouts ?? walletSave?.pondLayouts ?? walletSave?.pondLayout;
-      const metaResources = walletSave?.resources ?? STARTING_RESOURCES;
 
       let profileDraft = metaProfile;
-      let resourcesDraft = { ...metaResources };
-      let axolsDraft: Axol[] = walletSave?.axols.map(withCosmetic) ?? [];
+      let resourcesDraft = mergeOffChainResources(walletSave?.resources, cloud?.resources);
+      let axolsDraft = pickMostAxols(
+        walletSave?.axols,
+        cloud?.axols,
+        publicPlayer?.axols,
+      ).map(withCosmetic);
+
+      const hasSavedProgress =
+        axolsDraft.length > 0 ||
+        !!metaProfile.usernameSet ||
+        (walletSave?.axols.length ?? 0) > 0 ||
+        (cloud?.axols?.length ?? 0) > 0 ||
+        (publicPlayer?.axols.length ?? 0) > 0;
+
       let ready = false;
 
       if (chainClient) {
@@ -366,29 +419,23 @@ export default function World() {
             const trainerName = metaProfile.name?.trim() || "Trainer";
             await chainClient.ensurePlayer(trainerName);
             const state = await chainClient.refreshState();
-            axolsDraft = state.axols.map(withCosmetic);
-            resourcesDraft = {
+            if (state.axols.length > 0) {
+              axolsDraft = state.axols.map(withCosmetic);
+            }
+            resourcesDraft = normalizeResources({
+              ...resourcesDraft,
               solax: state.solax,
-              dna: metaResources.dna,
-              eggs: metaResources.eggs,
               energy: state.energy,
               maxEnergy: 100,
-              streak: metaResources.streak,
-            };
+            });
             if (state.axols.length > 0 && metaActive == null) {
               setActiveId(state.axols[0].id);
               setSelectedId(state.axols[0].id);
             }
-          } else if (walletSave) {
-            profileDraft = walletSave.profile;
-            resourcesDraft = { ...walletSave.resources };
-            axolsDraft = walletSave.axols.map(withCosmetic);
-            primeIds(axolsDraft);
-            battleId.current = walletSave.battleIdCounter;
-          } else {
+          } else if (!hasSavedProgress) {
             const fresh = freshSave();
             profileDraft = fresh.profile;
-            resourcesDraft = { ...fresh.resources };
+            resourcesDraft = normalizeResources(fresh.resources);
             axolsDraft = fresh.axols.map(withCosmetic);
             primeIds(axolsDraft);
             battleId.current = fresh.battleIdCounter;
@@ -396,35 +443,37 @@ export default function World() {
               setActiveId(fresh.activeId);
               setSelectedId(fresh.selectedId);
             }
+          } else if (walletSave) {
+            profileDraft = walletSave.profile;
+            resourcesDraft = mergeOffChainResources(walletSave.resources, cloud?.resources);
+            axolsDraft = pickMostAxols(walletSave.axols, cloud?.axols, publicPlayer?.axols).map(withCosmetic);
+            primeIds(axolsDraft);
+            battleId.current = walletSave.battleIdCounter;
           }
         } catch (e) {
           console.warn("[chain] hydrate skipped:", e);
           setChainReady(false);
-          if (walletSave) {
-            profileDraft = walletSave.profile;
-            resourcesDraft = { ...walletSave.resources };
-            axolsDraft = walletSave.axols.map(withCosmetic);
-            primeIds(axolsDraft);
-            battleId.current = walletSave.battleIdCounter;
+          if (hasSavedProgress) {
+            if (walletSave) {
+              profileDraft = walletSave.profile;
+              resourcesDraft = mergeOffChainResources(walletSave.resources, cloud?.resources);
+              axolsDraft = pickMostAxols(walletSave.axols, cloud?.axols, publicPlayer?.axols).map(withCosmetic);
+              primeIds(axolsDraft);
+              battleId.current = walletSave.battleIdCounter;
+            }
           } else {
             const fresh = freshSave();
             profileDraft = fresh.profile;
-            resourcesDraft = { ...fresh.resources };
+            resourcesDraft = normalizeResources(fresh.resources);
             axolsDraft = fresh.axols.map(withCosmetic);
             primeIds(axolsDraft);
             battleId.current = fresh.battleIdCounter;
           }
         }
-      } else if (walletSave) {
-        profileDraft = walletSave.profile;
-        resourcesDraft = { ...walletSave.resources };
-        axolsDraft = walletSave.axols.map(withCosmetic);
-        primeIds(axolsDraft);
-        battleId.current = walletSave.battleIdCounter;
-      } else {
+      } else if (!hasSavedProgress) {
         const fresh = freshSave();
         profileDraft = fresh.profile;
-        resourcesDraft = { ...fresh.resources };
+        resourcesDraft = normalizeResources(fresh.resources);
         axolsDraft = fresh.axols.map(withCosmetic);
         primeIds(axolsDraft);
         battleId.current = fresh.battleIdCounter;
@@ -432,6 +481,12 @@ export default function World() {
           setActiveId(fresh.activeId);
           setSelectedId(fresh.selectedId);
         }
+      } else if (walletSave) {
+        profileDraft = walletSave.profile;
+        resourcesDraft = mergeOffChainResources(walletSave.resources, cloud?.resources);
+        axolsDraft = pickMostAxols(walletSave.axols, cloud?.axols, publicPlayer?.axols).map(withCosmetic);
+        primeIds(axolsDraft);
+        battleId.current = walletSave.battleIdCounter;
       }
 
       if (publicKey) {
@@ -446,6 +501,7 @@ export default function World() {
         axolsDraft = gift.axols;
       }
 
+      primeIds(axolsDraft);
       setAxols(axolsDraft);
       setResources(resourcesDraft);
       setProfile(normalizeProfile(profileDraft));
@@ -457,17 +513,24 @@ export default function World() {
       if (metaPond) setPondLayouts(normalizePondLayouts(metaPond));
       if (cloud?.battleHistory) battleId.current = Math.max(battleId.current, ...metaHistory.map((b) => b.id), 0) + 1;
 
-      const count = ready && chainClient
-        ? axolsDraft.length
-        : walletSave?.axols.length ?? axolsDraft.length;
+      setSaveReady(true);
+
+      const restoredFromBackup =
+        !walletSave?.axols.length &&
+        axolsDraft.length > 0 &&
+        ((cloud?.axols?.length ?? 0) > 0 || (publicPlayer?.axols.length ?? 0) > 0);
+
+      const count = axolsDraft.length;
       toast(
         gift.applied
           ? "Launch gift! +5 eggs · +4 breeds per Solaxy"
-          : count > 0
-            ? `Welcome back! ${count} Solax${count === 1 ? "y" : "ies"} on-chain.`
-            : ready
-              ? "Wallet linked! Mint your first Solaxy at the DNA Core."
-              : "Wallet linked! Your island awaits.",
+          : restoredFromBackup
+            ? `Progress restored! ${count} Solax${count === 1 ? "y" : "ies"} back.`
+            : count > 0
+              ? `Welcome back! ${count} Solax${count === 1 ? "y" : "ies"}.`
+              : ready
+                ? "Wallet linked! Mint your first Solaxy at the DNA Core."
+                : "Wallet linked! Your island awaits.",
       );
     };
 
@@ -484,6 +547,7 @@ export default function World() {
   useEffect(() => {
     if (!mounted || connecting || isLinked) return;
     loadedWalletRef.current = null;
+    setSaveReady(false);
     setPondArranging(false);
     setPondArrangeView(null);
     apply(loggedOutSave());
@@ -505,7 +569,7 @@ export default function World() {
 
   // Auto-save progress — wallet-linked profiles (local cache + cloud).
   useEffect(() => {
-    if (!mounted || !walletFull) return;
+    if (!mounted || !walletFull || !saveReady) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const snap = buildSave(snapshot());
@@ -519,12 +583,21 @@ export default function World() {
         selectedId: snap.selectedId,
         lastDnaBonusAt: snap.lastDnaBonusAt,
         pondLayouts: snap.pondLayouts,
+        axols: snap.axols,
+        resources: {
+          dna: snap.resources.dna,
+          eggs: snap.resources.eggs,
+          energy: snap.resources.energy,
+          maxEnergy: snap.resources.maxEnergy,
+          streak: snap.resources.streak,
+          items: snap.resources.items,
+        },
       });
     }, 600);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [mounted, walletFull, axols, resources, profile, quests, battleHistory, activeId, selectedId, lastDnaBonusAt, pondLayouts]);
+  }, [mounted, walletFull, saveReady, axols, resources, profile, quests, battleHistory, activeId, selectedId, lastDnaBonusAt, pondLayouts]);
 
   // Sync public profile for global leaderboard & PvP matching.
   useEffect(() => {
@@ -618,20 +691,26 @@ export default function World() {
   /** Transfer SOLAX to burn wallet, verify on-chain, refresh balance. */
   const burnAndRefresh = useCallback(
     async (cost: number): Promise<boolean> => {
-      if (!requireWallet() || !publicKey || !sendTransaction) {
+      if (!requireWallet() || !publicKey) {
         toast("Connect wallet to spend SOLAX");
         return false;
       }
-      if (resources.solax < cost) {
-        toast(`Need ${cost.toLocaleString()} SOLAX in wallet`);
+      if (!sendTransaction && !signTransaction) {
+        toast("Wallet cannot sign transactions");
         return false;
       }
       try {
+        const freshBal = await readSolaxBalance(connection, publicKey);
+        setResources((r) => ({ ...r, solax: freshBal }));
+        if (freshBal < cost) {
+          toast(`Need ${cost.toLocaleString()} SOLAX in wallet (you have ${freshBal.toLocaleString()})`);
+          return false;
+        }
+
         toast("Confirm SOLAX transfer in your wallet…");
         const sig = await transferSolaxToBurnWallet(
           connection,
-          publicKey,
-          (tx) => sendTransaction(tx, connection),
+          { publicKey, sendTransaction, signTransaction },
           cost,
         );
 
@@ -658,11 +737,12 @@ export default function World() {
         return true;
       } catch (e) {
         console.error("[burn]", e);
-        toast("Transaction cancelled or failed.");
+        const msg = e instanceof Error ? e.message : "Transaction cancelled or failed.";
+        toast(msg.length > 80 ? "Transaction cancelled or failed." : msg);
         return false;
       }
     },
-    [connection, publicKey, sendTransaction, resources.solax, toast, recordEconomy, requireWallet],
+    [connection, publicKey, sendTransaction, signTransaction, toast, recordEconomy, requireWallet],
   );
 
   const doRoll = async (_luck = 0): Promise<Axol | null> => {
@@ -819,13 +899,42 @@ export default function World() {
     return { mine, enemy, result };
   };
 
+  const spendDna = useCallback((amount: number): boolean => {
+    if (amount <= 0) return true;
+    if (resources.dna < amount) return false;
+    setResources((r) => ({ ...r, dna: r.dna - amount }));
+    return true;
+  }, [resources.dna]);
+
+  const consumeHarborItems = useCallback((keys: string[]): boolean => {
+    const items = normalizeItems(resources.items);
+    for (const k of keys) {
+      if ((items[k] ?? 0) < 1) return false;
+    }
+    setResources((r) => {
+      const next = { ...normalizeItems(r.items) };
+      for (const k of keys) next[k] = Math.max(0, (next[k] ?? 0) - 1);
+      return { ...r, items: next };
+    });
+    return true;
+  }, [resources.items]);
+
   const purchase = async (
     price: number,
     reward?: Partial<Resources>,
     label?: string,
-    _itemId?: string,
+    itemId?: string,
   ): Promise<boolean> => {
     if (!requireWallet()) return false;
+
+    const itemEffect = itemId ? MARKET_ITEM_EFFECTS[itemId] : undefined;
+    if (itemEffect?.kind === "xp") {
+      const target = axols.find((a) => a.id === activeId) ?? axols[0];
+      if (!target) {
+        toast("Hatch a Solaxy before buying XP potions");
+        return false;
+      }
+    }
 
     if (price > 0) {
       setPurchasing(true);
@@ -838,12 +947,32 @@ export default function World() {
 
     if (reward) {
       setResources((r) => {
-        const b = { ...r };
+        const b = normalizeResources(r);
         if (reward.dna) b.dna += reward.dna;
         if (reward.eggs) b.eggs += reward.eggs;
         if (reward.energy) b.energy = Math.min(r.maxEnergy, r.energy + reward.energy);
         return b;
       });
+    }
+
+    if (itemEffect?.kind === "booster") {
+      setResources((r) => {
+        const items = normalizeItems(r.items);
+        items[itemEffect.key] = (items[itemEffect.key] ?? 0) + itemEffect.count;
+        return { ...r, items };
+      });
+      if (label) toast(`${label} added — equip in DNA Core`);
+    } else if (itemEffect?.kind === "xp") {
+      const target = axols.find((a) => a.id === activeId) ?? axols[0]!;
+      const gain = solaxyXpGain(target, itemEffect.amount);
+      setAxols((list) =>
+        list.map((x) => (x.id === target.id ? { ...x, xp: gain.xp, level: gain.level } : x)),
+      );
+      if (gain.levelsGained > 0) {
+        setProfile((p) => applySolaxyLevelUps(p, gain.levelsGained));
+      }
+      sfx.powerUp();
+      toast(`+${itemEffect.amount.toLocaleString()} XP for ${target.name}`);
     }
 
     if (label && price > 0) {
@@ -1126,6 +1255,8 @@ export default function World() {
     openPondArrange,
     closePondArrange,
     setPondSpot,
+    spendDna,
+    consumeHarborItems,
     resetPondLayout,
     chainReady,
   };
@@ -1222,6 +1353,7 @@ export default function World() {
           {screen === "battle" && <ArenaScreen world={world} />}
           {screen === "market" && <MarketScreen world={world} />}
           {screen === "empire" && <EmpireScreen world={world} />}
+          {screen === "settings" && <SettingsScreen world={world} />}
         </div>
       )}
 

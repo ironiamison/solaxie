@@ -73,16 +73,26 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
 
   async function spin(count: number) {
     if (phase === "charging") return;
+
+    const activeBoosters = BOOSTERS.filter((b) => boosts[b.id]);
+    let dnaBoostCost = 0;
+    const consumeKeys: string[] = [];
+    for (const b of activeBoosters) {
+      const owned = world.resources.items?.[b.id] ?? 0;
+      if (owned > 0) consumeKeys.push(b.id);
+      else dnaBoostCost += b.cost;
+    }
+
     if (world.chainReady) {
       if (world.resources.solax < COSTS.roll.solax * count) {
         world.toast(`Need ${(COSTS.roll.solax * count).toLocaleString()} SOLAX in wallet`);
         return;
       }
     } else {
-      const dnaNeed = count * COSTS.roll.dna;
+      const dnaNeed = count * COSTS.roll.dna + dnaBoostCost;
       const energyNeed = count * COSTS.roll.energy;
       if (world.resources.dna < dnaNeed) {
-        world.toast(`Need ${dnaNeed} DNA to spin`);
+        world.toast(dnaBoostCost > 0 ? `Need ${dnaNeed} DNA (includes boosters)` : `Need ${dnaNeed} DNA to spin`);
         return;
       }
       if (world.resources.energy < energyNeed) {
@@ -90,6 +100,7 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
         return;
       }
     }
+
     setLastCount(count);
     setPhase("charging");
     setResults([]);
@@ -108,6 +119,10 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
       world.toast(world.chainReady ? "Mint failed or cancelled" : "Spin failed — try again");
       return;
     }
+
+    if (dnaBoostCost > 0) world.spendDna(dnaBoostCost);
+    if (consumeKeys.length > 0) world.consumeHarborItems(consumeKeys);
+
     const best = got.reduce((a, b) => (RARITY_META[b.rarity].stars > RARITY_META[a.rarity].stars ? b : a), got[0]);
     setResults(got);
     setPhase("revealed");
@@ -302,19 +317,30 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {BOOSTERS.map((b) => {
                 const on = boosts[b.id];
+                const owned = world.resources.items?.[b.id] ?? 0;
                 return (
                   <button
                     key={b.id}
-                    onClick={() => setBoosts((s) => ({ ...s, [b.id]: !s[b.id] }))}
+                    onClick={() => {
+                      if (!on && owned === 0 && world.resources.dna < b.cost) {
+                        world.toast(`Need ${b.cost} DNA or buy at Harbor`);
+                        return;
+                      }
+                      setBoosts((s) => ({ ...s, [b.id]: !s[b.id] }));
+                    }}
                     className="flex flex-col items-center gap-1 rounded-2xl border px-2 py-2.5 text-center transition hover:-translate-y-0.5"
                     style={{ borderColor: on ? b.color : "rgba(255,255,255,0.1)", background: on ? `${b.color}22` : "rgba(0,0,0,0.25)" }}
                   >
                     <GameIcon src={b.icon} size={24} glow={b.color} />
                     <span className="text-[0.66rem] font-extrabold text-white">{b.name}</span>
                     <span className="text-[0.56rem]" style={{ color: b.color }}>{b.note}</span>
-                    <span className="inline-flex items-center gap-1 text-[0.6rem] font-bold text-white/70">
-                      <GameIcon src={UI.dna} size={12} /> {b.cost}
-                    </span>
+                    {owned > 0 ? (
+                      <span className="text-[0.6rem] font-bold text-emerald-300">×{owned} owned</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[0.6rem] font-bold text-white/70">
+                        <GameIcon src={UI.dna} size={12} /> {b.cost}
+                      </span>
+                    )}
                   </button>
                 );
               })}

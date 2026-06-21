@@ -311,10 +311,8 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
               <li><b className="text-white">Classic dex art pass</b> — replace color-filter echoes on the original 6 elements with unique illustrated sprites per form (same quality as Primal lines). Filters let us ship 85 forms fast; v1.3 makes every entry feel collectible.</li>
               <li><b className="text-white">Classified Solaxies</b> — unlock Zephyr, Nocturne, Mycelium, Solara, Glacier, and Mirage as a new season drop.</li>
               <li><b className="text-white">Player-to-player trading</b> — list and buy Solaxies from other trainers at the Harbor.</li>
-              <li><b className="text-white">Settings</b> — audio, notifications, and account preferences.</li>
-              <li><b className="text-white">Friends list</b> — follow trainers and see when they&apos;re in the Arena.</li>
-              <li><b className="text-white">Full battle log &amp; achievements</b> — complete history and badge hall in Empire.</li>
-              <li><b className="text-white">Harbor boosters</b> — wire XP potions, lucky charms, and epic odds items to actually affect rolls.</li>
+              <li><b className="text-white">Settings</b> — audio, notifications, and wallet account (live in v1.3).</li>
+              <li><b className="text-white">Harbor boosters</b> — lucky charms and odds items from Market apply to DNA Core spins.</li>
             </ul>
           </div>
 

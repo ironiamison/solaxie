@@ -27,20 +27,27 @@ function sumBalances(accounts: ParsedTokenAccount[]): number {
   }, 0);
 }
 
-/** Read SOLAX in the connected wallet — Token-2022 safe, no chain client required. */
+function uiFromRaw(amount: string, decimals: number): number {
+  return Number(amount) / 10 ** decimals;
+}
+
+/** Read SOLAX in the connected wallet — Token-2022 (pump.fun) safe. */
 export async function fetchWalletSolaxBalance(
   connection: Connection,
   owner: PublicKey,
 ): Promise<number> {
+  let best = 0;
+
+  // 1. Direct ATA (fast path when account exists).
   try {
-    const byMint = await connection.getParsedTokenAccountsByOwner(owner, { mint: TOKEN_MINT });
-    if (byMint.value.length > 0) {
-      return sumBalances(byMint.value as ParsedTokenAccount[]);
-    }
-  } catch (e) {
-    console.warn("[wallet-balance] mint scan", e);
+    const bal = await connection.getTokenAccountBalance(playerAta(owner));
+    const ui = bal.value.uiAmount ?? uiFromRaw(bal.value.amount, bal.value.decimals);
+    if (ui > best) best = ui;
+  } catch {
+    // ATA may not exist yet.
   }
 
+  // 2. Token-2022 program scan (pump.fun mint).
   try {
     const byProgram = await connection.getParsedTokenAccountsByOwner(owner, {
       programId: TOKEN_PROGRAM_FOR_MINT,
@@ -48,15 +55,27 @@ export async function fetchWalletSolaxBalance(
     const ours = (byProgram.value as ParsedTokenAccount[]).filter(
       (a) => a.account.data.parsed.info.mint === TOKEN_MINT.toBase58(),
     );
-    if (ours.length > 0) return sumBalances(ours);
+    if (ours.length > 0) {
+      const ui = sumBalances(ours);
+      if (ui > best) best = ui;
+    }
   } catch (e) {
     console.warn("[wallet-balance] program scan", e);
   }
 
+  // 3. Mint filter fallback.
   try {
-    const bal = await connection.getTokenAccountBalance(playerAta(owner));
-    return bal.value.uiAmount ?? 0;
-  } catch {
-    return 0;
+    const byMint = await connection.getParsedTokenAccountsByOwner(owner, {
+      mint: TOKEN_MINT,
+      programId: TOKEN_PROGRAM_FOR_MINT,
+    });
+    if (byMint.value.length > 0) {
+      const ui = sumBalances(byMint.value as ParsedTokenAccount[]);
+      if (ui > best) best = ui;
+    }
+  } catch (e) {
+    console.warn("[wallet-balance] mint scan", e);
   }
+
+  return best;
 }

@@ -125,15 +125,12 @@ export function createChainClient(
   }
 
   async function burnSolax(priceWhole: number): Promise<string> {
-    const sig = await transferSolaxToBurnWallet(
-      connection,
-      owner,
-      (tx) => provider.sendAndConfirm(tx, [], { commitment: "confirmed" }),
-      priceWhole,
-    );
+    const sig = await transferSolaxToBurnWallet(connection, {
+      publicKey: owner,
+      signTransaction: wallet.signTransaction.bind(wallet),
+    }, priceWhole);
     const ok = await verifySolaxBurnTransfer(connection, sig, owner, priceWhole);
     if (!ok) throw new Error("SOLAX burn transfer could not be verified");
-    console.info("[chain] burn transfer", priceWhole, sig);
     return sig;
   }
 
