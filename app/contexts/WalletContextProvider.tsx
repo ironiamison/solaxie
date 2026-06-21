@@ -13,7 +13,7 @@ require("@solana/wallet-adapter-react-ui/styles.css");
 const WalletContextProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const endpoint = useMemo(() => RPC_URL, []);
   const config = useMemo(
-    () => ({ commitment: "confirmed" as const, disableRetryOnRateLimit: true }),
+    () => ({ commitment: "confirmed" as const }),
     [],
   );
 

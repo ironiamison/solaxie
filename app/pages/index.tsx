@@ -75,6 +75,7 @@ import { ProfileDropdown } from "@/components/world/ProfileDropdown";
 import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile";
 import { STARTER_PROFILE, needsUsername, normalizeProfile, formatTrainerName } from "@/lib/profile";
 import { applyLaunchAirdrop } from "@/lib/airdrops";
+import { fetchWalletSolaxBalance } from "@/lib/wallet-balance";
   dailyQuestsComplete,
   utcDayKey,
   type ProgressEvent,
@@ -410,8 +411,8 @@ export default function World() {
         }
       }
 
-      if (chainClient) {
-        const solax = await chainClient.fetchTokenBalance();
+      if (publicKey) {
+        const solax = await fetchWalletSolaxBalance(connection, publicKey);
         resourcesDraft = { ...resourcesDraft, solax };
       }
 
@@ -520,19 +521,25 @@ export default function World() {
     };
   }, [mounted, walletFull, profile, axols, activeId, quests]);
 
-  // Keep displayed SOLAX in sync with wallet SPL balance.
+  // Keep displayed SOLAX in sync with wallet SPL balance (no chain client required).
   useEffect(() => {
-    if (!mounted || !walletFull || !chainClient) return;
+    if (!mounted || !publicKey) return;
     let cancelled = false;
     const syncBal = () => {
-      void chainClient.fetchTokenBalance().then((solax) => {
+      void fetchWalletSolaxBalance(connection, publicKey).then((solax) => {
         if (!cancelled) setResources((r) => ({ ...r, solax }));
       });
     };
     syncBal();
     const iv = setInterval(syncBal, 12_000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [mounted, walletFull, chainClient]);
+    const onFocus = () => syncBal();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [mounted, publicKey, connection]);
 
   // Poll the global live feed (shared by all players).
   useEffect(() => {

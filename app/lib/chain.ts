@@ -21,6 +21,7 @@ import {
   getProgram,
   type PlayerData,
 } from "@/utils/anchor";
+import { fetchWalletSolaxBalance } from "@/lib/wallet-balance";
 import { solaxPriceToBaseUnits } from "@/lib/token";
 import { chainAxolToUi } from "@/lib/chain-mapper";
 import type { Axol } from "@/lib/game";
@@ -85,19 +86,7 @@ export function createChainClient(
   }
 
   async function fetchTokenBalance(): Promise<number> {
-    try {
-      const bal = await connection.getTokenAccountBalance(playerTokenAta());
-      return bal.value.uiAmount ?? 0;
-    } catch {
-      try {
-        const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint: TOKEN_MINT });
-        if (resp.value.length === 0) return 0;
-        const info = resp.value[0].account.data.parsed.info.tokenAmount;
-        return info.uiAmount ?? Number(info.amount) / 10 ** info.decimals;
-      } catch {
-        return 0;
-      }
-    }
+    return fetchWalletSolaxBalance(connection, owner);
   }
 
   async function fetchPlayer(): Promise<PlayerData | null> {
