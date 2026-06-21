@@ -7,22 +7,21 @@ import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import type { WalletError } from "@solana/wallet-adapter-base";
 import { RPC_URL } from "@/utils/anchor";
 import { BurnerWalletAdapter } from "@/utils/burnerWallet";
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets";
 require("@solana/wallet-adapter-react-ui/styles.css");
 
 const WalletContextProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const endpoint = useMemo(() => RPC_URL, []);
-  const config = useMemo(() => {
-    const wsEndpoint = endpoint.includes("127.0.0.1:8899")
-      ? "ws://127.0.0.1:8900"
-      : endpoint.includes("localhost:8899")
-        ? "ws://localhost:8900"
-        : undefined;
-    return { commitment: "confirmed" as const, wsEndpoint };
-  }, [endpoint]);
+  const config = useMemo(
+    () => ({ commitment: "confirmed" as const, disableRetryOnRateLimit: true }),
+    [],
+  );
 
-  // Phantom/Solflare are auto-detected via Wallet Standard when the extension is installed.
-  // Burner is our dev fallback when no extension is present.
-  const wallets = useMemo(() => [new BurnerWalletAdapter()], []);
+  // Phantom for real wallets; Burner for local testing without an extension.
+  const wallets = useMemo(
+    () => [new PhantomWalletAdapter(), new BurnerWalletAdapter()],
+    [],
+  );
 
   const onError = useCallback((error: WalletError) => {
     console.error("[wallet]", error);

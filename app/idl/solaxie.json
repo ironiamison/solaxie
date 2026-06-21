@@ -112,57 +112,9 @@
           }
         },
         {
-          "name": "player_token_account",
-          "writable": true
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104
-                ]
-              }
-            ]
-          }
-        },
-        {
           "name": "signer",
           "writable": true,
           "signer": true
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
           "name": "system_program",
@@ -235,6 +187,10 @@
           }
         },
         {
+          "name": "token_mint",
+          "writable": true
+        },
+        {
           "name": "parent_a",
           "writable": true,
           "pda": {
@@ -302,24 +258,6 @@
         {
           "name": "player_token_account",
           "writable": true
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
         },
         {
           "name": "signer",
@@ -418,7 +356,7 @@
     {
       "name": "init_player",
       "docs": [
-        "Create a player profile + token account and grant a starter stash from the vault."
+        "Create a player profile + token account (buy SOLAX on pump.fun to play)."
       ],
       "discriminator": [
         114,
@@ -474,46 +412,6 @@
         },
         {
           "name": "token_mint"
-        },
-        {
-          "name": "vault_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
         },
         {
           "name": "player_token_account",
@@ -778,7 +676,6 @@
         },
         {
           "name": "game_data",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -794,6 +691,10 @@
               }
             ]
           }
+        },
+        {
+          "name": "token_mint",
+          "writable": true
         },
         {
           "name": "axol",
@@ -821,24 +722,6 @@
           "writable": true
         },
         {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
           "name": "signer",
           "writable": true,
           "signer": true
@@ -862,7 +745,7 @@
     {
       "name": "shop_purchase",
       "docs": [
-        "Pay for a shop item — tokens sink into the treasury vault."
+        "Pay for a shop item — tokens are burned."
       ],
       "discriminator": [
         185,
@@ -894,26 +777,12 @@
           }
         },
         {
-          "name": "player_token_account",
+          "name": "token_mint",
           "writable": true
         },
         {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
+          "name": "player_token_account",
+          "writable": true
         },
         {
           "name": "signer",

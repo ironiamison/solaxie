@@ -1,6 +1,8 @@
 import type { Axol, FeedItem, Resources } from "./game";
 import type { BattleHistoryEntry, TrainerProfile } from "./profile";
 import type { Quests } from "@/components/world/world";
+import type { PondLayout } from "./pond-layout";
+import type { PondLayouts } from "./pond-layouts";
 
 export function shortAddr(addr: string) {
   if (addr.length <= 10) return addr;
@@ -26,6 +28,12 @@ export type GameSave = {
   selectedId: number | null;
   battleIdCounter: number;
   idCounter: number;
+  /** Unix ms — last free DNA bonus claim in DNA Core. */
+  lastDnaBonusAt?: number;
+  /** Saved drag positions for pond Solaxies per screen. */
+  pondLayouts?: PondLayouts;
+  /** @deprecated Migrated to pondLayouts */
+  pondLayout?: PondLayout;
   savedAt: number;
 };
 

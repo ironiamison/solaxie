@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Axol, CLASS_META, COSTS, ENERGY_REFILL, RARITY_META, RARITY_ORDER, Rarity, axolSprite, energyRefillCost } from "@/lib/game";
+import { useEffect, useMemo, useState } from "react";
+import { Axol, CLASS_META, COSTS, DNA_BONUS, ENERGY_REFILL, RARITY_META, RARITY_ORDER, Rarity, axolSprite, dnaBonusRemaining, energyRefillCost, formatCooldown } from "@/lib/game";
 import { UI } from "@/lib/ui-icons";
 import { sfx } from "@/lib/sfx";
 import type { WorldApi } from "../world";
@@ -25,6 +25,44 @@ const TIER: Record<Rarity, { label: string; color: string; confetti: number; sha
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function DnaBonusPanel({ world }: { world: WorldApi }) {
+  const [now, setNow] = useState(() => Date.now());
+  const remaining = dnaBonusRemaining(world.lastDnaBonusAt, now);
+  const ready = remaining <= 0;
+
+  useEffect(() => {
+    if (ready) return;
+    const iv = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, [ready, world.lastDnaBonusAt]);
+
+  return (
+    <Panel className="flex items-center gap-3 p-4">
+      <div className="relative shrink-0">
+        <GameIcon src={UI.gift} size={36} />
+        {ready && (
+          <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-ink-900" />
+        )}
+      </div>
+      <div className="flex-1">
+        <div className="text-sm font-extrabold text-white">Free DNA Bonus</div>
+        <p className="text-[0.62rem] text-white/55">
+          {ready
+            ? `Claim +${DNA_BONUS.amount} DNA — available every 4 hours.`
+            : `Next claim in ${formatCooldown(remaining)}`}
+        </p>
+      </div>
+      <button
+        onClick={() => world.claimDnaBonus()}
+        disabled={!ready}
+        className="rounded-full bg-gradient-to-r from-[#8a37ff] to-[#d63cff] px-3 py-1.5 text-[0.7rem] font-extrabold text-white shadow-glow transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        {ready ? "CLAIM" : formatCooldown(remaining)}
+      </button>
+    </Panel>
+  );
+}
+
 export default function DnaCoreScreen({ world }: { world: WorldApi }) {
   const [phase, setPhase] = useState<"idle" | "charging" | "revealed">("idle");
   const [results, setResults] = useState<Axol[]>([]);
@@ -35,13 +73,20 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
 
   async function spin(count: number) {
     if (phase === "charging") return;
-    if (world.resources.dna < COSTS.roll.dna) {
-      world.toast("Not enough DNA");
-      return;
-    }
-    if (world.resources.energy < COSTS.roll.energy) {
-      world.toast("Out of energy — refill below to keep spinning");
-      return;
+    if (world.chainReady) {
+      if (world.resources.solax < COSTS.roll.solax * count) {
+        world.toast(`Need ${(COSTS.roll.solax * count).toLocaleString()} SOLAX in wallet`);
+        return;
+      }
+    } else {
+      if (world.resources.dna < 1) {
+        world.toast("Not enough DNA");
+        return;
+      }
+      if (world.resources.energy < 10) {
+        world.toast("Out of energy — refill below to keep spinning");
+        return;
+      }
     }
     setLastCount(count);
     setPhase("charging");
@@ -58,7 +103,7 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
     if (wait) await delay(wait);
     if (got.length === 0) {
       setPhase("idle");
-      world.toast("Not enough DNA");
+      world.toast(world.chainReady ? "Mint failed or cancelled" : "Not enough DNA");
       return;
     }
     const best = got.reduce((a, b) => (RARITY_META[b.rarity].stars > RARITY_META[a.rarity].stars ? b : a), got[0]);
@@ -68,13 +113,13 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
     setBoosts({});
   }
 
-  function refill(blocks: number) {
+  async function refill(blocks: number) {
     if (blocks <= 0) { world.toast("Energy already full"); return; }
-    if (world.buyEnergy(blocks)) {
+    if (await world.buyEnergy(blocks)) {
       sfx.coin();
-      world.toast(`+${blocks * ENERGY_REFILL.perBlock} energy · −${(blocks * ENERGY_REFILL.solaxPerBlock).toLocaleString()} SOLAX`);
+      world.toast(`+${blocks * ENERGY_REFILL.perBlock} energy · −${(blocks * ENERGY_REFILL.solaxPerBlock).toLocaleString()} SOLAX burned`);
     } else {
-      world.toast(`Need ${(blocks * ENERGY_REFILL.solaxPerBlock).toLocaleString()} SOLAX`);
+      world.toast(`Need ${(blocks * ENERGY_REFILL.solaxPerBlock).toLocaleString()} SOLAX in wallet`);
     }
   }
 
@@ -137,14 +182,7 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
             <button onClick={() => world.setScreen("market")} className="grid h-9 w-9 place-items-center rounded-full bg-brand-500/40 text-lg text-white hover:bg-brand-500/60">+</button>
           </Panel>
 
-          <Panel className="flex items-center gap-3 p-4">
-            <GameIcon src={UI.gift} size={36} />
-            <div className="flex-1">
-              <div className="text-sm font-extrabold text-white">Daily DNA Bonus</div>
-              <p className="text-[0.62rem] text-white/55">Spin once per day for a free reward!</p>
-            </div>
-            <button onClick={() => { void world.purchase(0, { dna: 5 }); world.toast("Claimed +5 DNA!"); }} className="rounded-full bg-gradient-to-r from-[#8a37ff] to-[#d63cff] px-3 py-1.5 text-[0.7rem] font-extrabold text-white shadow-glow">CLAIM</button>
-          </Panel>
+          <DnaBonusPanel world={world} />
         </aside>
 
         {/* Center chamber */}
@@ -205,34 +243,52 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
                 </div>
               )}
             </div>
-            {world.resources.energy < COSTS.roll.energy && (
+            {world.chainReady ? (
+              <p className="mt-1.5 text-center text-[0.64rem] font-semibold text-amber-300">
+                On-chain mint · {COSTS.roll.solax.toLocaleString()} SOLAX per Solaxy · energy from your player account
+              </p>
+            ) : world.resources.energy < 10 ? (
               <p className="mt-1.5 text-center text-[0.64rem] font-semibold text-amber-300">Out of energy — refill to keep spinning (100k SOLAX per 10 energy).</p>
-            )}
+            ) : null}
           </div>
 
-          {/* spin buttons */}
-          <div className="mt-3 flex w-full max-w-xl gap-3 px-2">
+          {/* spin buttons — pt-2 gives room for the 10× discount badge above the button */}
+          <div className="mt-3 flex w-full max-w-xl gap-3 overflow-visible px-2 pt-2">
             <button
               onClick={() => spin(1)}
-              disabled={phase === "charging" || world.resources.energy < COSTS.roll.energy}
-              className="group relative flex flex-1 flex-col items-center overflow-hidden rounded-3xl bg-gradient-to-b from-[#3aa0ff] to-[#1f6fd6] py-3 font-display font-extrabold text-white shadow-[0_10px_30px_rgba(31,111,214,0.5)] transition hover:-translate-y-0.5 disabled:opacity-60"
+              disabled={phase === "charging" || (!world.chainReady && world.resources.energy < 10)}
+              className="group relative flex flex-1 flex-col items-center rounded-3xl bg-gradient-to-b from-[#3aa0ff] to-[#1f6fd6] py-3 font-display font-extrabold text-white shadow-[0_10px_30px_rgba(31,111,214,0.5)] transition hover:-translate-y-0.5 disabled:opacity-60"
             >
-              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-              <span className="text-lg">{phase === "charging" ? "AWAKENING…" : "SPIN DNA"}</span>
-              <span className="inline-flex items-center gap-1 text-[0.7rem] font-bold text-white/80">
-                <GameIcon src={UI.dna} size={14} /> 1 · <GameIcon src={UI.energy} size={14} /> {COSTS.roll.energy}
+              <span className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
+                <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+              </span>
+              <span className="relative z-10 text-lg">{phase === "charging" ? "AWAKENING…" : world.chainReady ? "MINT SOLAXY" : "SPIN DNA"}</span>
+              <span className="relative z-10 inline-flex items-center gap-1 text-[0.7rem] font-bold text-white/80">
+                {world.chainReady ? (
+                  <><GameIcon src={UI.coin} size={14} /> {COSTS.roll.solax.toLocaleString()} SOLAX</>
+                ) : (
+                  <><GameIcon src={UI.dna} size={14} /> 1 · <GameIcon src={UI.energy} size={14} /> 10</>
+                )}
               </span>
             </button>
             <button
               onClick={() => spin(10)}
-              disabled={phase === "charging" || world.resources.energy < COSTS.roll.energy}
-              className="group relative flex flex-1 flex-col items-center overflow-hidden rounded-3xl bg-gradient-to-b from-[#ffb340] to-[#ff8a1f] py-3 font-display font-extrabold text-white shadow-[0_10px_30px_rgba(255,138,31,0.5)] transition hover:-translate-y-0.5 disabled:opacity-60"
+              disabled={phase === "charging" || (!world.chainReady && world.resources.energy < 10)}
+              className="group relative flex flex-1 flex-col items-center rounded-3xl bg-gradient-to-b from-[#ffb340] to-[#ff8a1f] py-3 font-display font-extrabold text-white shadow-[0_10px_30px_rgba(255,138,31,0.5)] transition hover:-translate-y-0.5 disabled:opacity-60"
             >
-              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-              <span className="absolute -top-2 right-3 rounded-full bg-rose-500 px-2 py-0.5 text-[0.58rem] font-extrabold">~10%</span>
-              <span className="text-lg">10X SPIN</span>
-              <span className="inline-flex items-center gap-1 text-[0.7rem] font-bold text-white/90">
-                <GameIcon src={UI.dna} size={14} /> 10 · <GameIcon src={UI.energy} size={14} /> {COSTS.roll.energy * 10}
+              <span className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
+                <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+              </span>
+              <span className="absolute -right-1 -top-3 z-20 rounded-full border-2 border-ink-900 bg-rose-500 px-2 py-0.5 text-[0.58rem] font-extrabold leading-none shadow-[0_2px_8px_rgba(244,63,94,0.55)]">
+                -10%
+              </span>
+              <span className="relative z-10 text-lg">{world.chainReady ? "10× MINT" : "10X SPIN"}</span>
+              <span className="relative z-10 inline-flex items-center gap-1 text-[0.7rem] font-bold text-white/90">
+                {world.chainReady ? (
+                  <><GameIcon src={UI.coin} size={14} /> {(COSTS.roll.solax * 10).toLocaleString()} SOLAX</>
+                ) : (
+                  <><GameIcon src={UI.dna} size={14} /> 10 · <GameIcon src={UI.energy} size={14} /> 100</>
+                )}
               </span>
             </button>
           </div>

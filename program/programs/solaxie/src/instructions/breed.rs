@@ -5,7 +5,7 @@ use crate::state::axol::Axol;
 use crate::state::game_data::GameData;
 use crate::state::player_data::PlayerData;
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount};
 
 /// Breed two owned Axols into a new child Axol. Costs tokens (scaling with the parents'
 /// breed counts) which flow into the treasury vault, plus energy.
@@ -44,12 +44,12 @@ pub fn breed(ctx: Context<Breed>, child_id: u64) -> Result<()> {
         ctx.accounts.player_token_account.amount >= cost,
         GameErrorCode::NotEnoughTokens
     );
-    token::transfer(
+    token::burn(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
-            Transfer {
+            Burn {
+                mint: ctx.accounts.token_mint.to_account_info(),
                 from: ctx.accounts.player_token_account.to_account_info(),
-                to: ctx.accounts.vault.to_account_info(),
                 authority: ctx.accounts.signer.to_account_info(),
             },
         ),
@@ -106,12 +106,11 @@ pub struct Breed<'info> {
     )]
     pub player: Account<'info, PlayerData>,
 
-    #[account(
-        mut,
-        seeds = [b"config".as_ref()],
-        bump,
-    )]
+    #[account(mut, seeds = [b"config".as_ref()], bump)]
     pub game_data: Account<'info, GameData>,
+
+    #[account(mut, address = game_data.token_mint)]
+    pub token_mint: Account<'info, Mint>,
 
     #[account(mut, seeds = [b"axol".as_ref(), parent_a.id.to_le_bytes().as_ref()], bump)]
     pub parent_a: Account<'info, Axol>,
@@ -134,9 +133,6 @@ pub struct Breed<'info> {
         constraint = player_token_account.owner == signer.key() @ GameErrorCode::WrongAuthority,
     )]
     pub player_token_account: Account<'info, TokenAccount>,
-
-    #[account(mut, seeds = [b"vault".as_ref()], bump)]
-    pub vault: Account<'info, TokenAccount>,
 
     #[account(mut)]
     pub signer: Signer<'info>,

@@ -7,14 +7,16 @@ import {
   BattleResult,
   CLASS_META,
   COSTS,
+  DNA_BONUS,
+  ON_CHAIN_COSTS,
+  dnaBonusRemaining,
+  formatCooldown,
   ENERGY_REFILL,
   FeedItem,
   Resources,
   STARTING_RESOURCES,
-  axolSprite,
   breedAxol,
   withCosmetic,
-  chain,
   feedItem,
   randomAxol,
   resolveBattle,
@@ -38,18 +40,30 @@ import {
   type GameSave,
 } from "@/lib/save";
 import { createChainClient } from "@/lib/chain";
+import { fetchCloudSave, postCloudSave } from "@/lib/cloud-save";
 import { fetchGlobalFeed, postGlobalFeed } from "@/lib/global-feed";
 import { recordEconomy as postEconomyStats } from "@/lib/global-stats";
 import { fetchPublicPlayer, syncPublicPlayer } from "@/lib/global-players";
 import { sfx } from "@/lib/sfx";
 import { BreedModal, UsernameModal } from "@/components/world/modals";
 import { SpendBurnMeter } from "@/components/world/SpendBurnMeter";
+import { PondLayer } from "@/components/world/PondLayer";
+import { PondArrangeOverlay } from "@/components/world/PondArrangeOverlay";
+import {
+  EMPTY_POND_LAYOUTS,
+  layoutForView,
+  normalizePondLayouts,
+  resetLayoutView,
+  setLayoutSpot,
+  type PondLayouts,
+} from "@/lib/pond-layouts";
 import { LeaderboardModal } from "@/components/world/LeaderboardPanel";
 import { TwitterLink } from "@/components/world/TwitterLink";
 import { avatarSrc } from "@/lib/profile";
 import type { PublicPlayer } from "@/lib/public-player";
+import type { PondLayout, PondSpotPct } from "@/lib/pond-layout";
 import Atmosphere from "@/components/world/Atmosphere";
-import type { Screen, WorldApi } from "@/components/world/world";
+import type { Screen, WorldApi, Quests } from "@/components/world/world";
 import CollectionScreen from "@/components/world/screens/CollectionScreen";
 import DnaCoreScreen from "@/components/world/screens/DnaCoreScreen";
 import ArenaScreen from "@/components/world/screens/ArenaScreen";
@@ -59,7 +73,14 @@ import TutorialScreen from "@/components/world/screens/TutorialScreen";
 import { ConnectWalletModal } from "@/components/world/ConnectWalletModal";
 import { ProfileDropdown } from "@/components/world/ProfileDropdown";
 import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile";
-import { STARTER_PROFILE, needsUsername } from "@/lib/profile";
+import { STARTER_PROFILE, needsUsername, normalizeProfile } from "@/lib/profile";
+import {
+  applyProgressEvent,
+  applySolaxyLevelUps,
+  dailyQuestsComplete,
+  utcDayKey,
+  type ProgressEvent,
+} from "@/lib/progression";
 
 type Target = Screen | "breed";
 
@@ -83,14 +104,6 @@ const BUILDINGS: Building[] = [
   { id: "nursery", title: "Nursery Tree", sub: "Breed", icon: "/icon-nursery.png", target: "breed", accent: "#ff5fb0", pos: { left: "77%", top: "17%" }, scale: 1.22, flags: true, aura: 0.6 },
   { id: "market", title: "Harbor Market", sub: "Shop", icon: "/icon-market.png", target: "market", accent: "#2fe0cf", pos: { left: "86%", top: "57%" }, scale: 1.2, flags: true, aura: 0.55 },
   { id: "empire", title: "Empire Hall", sub: "Ranks", icon: "/icon-empire.png", target: "empire", accent: "#ffb02e", pos: { left: "50%", top: "12%" }, scale: 1.2, flags: true, aura: 0.6 },
-];
-
-const POND_SPOTS = [
-  { left: "42%", top: "52%" },
-  { left: "57%", top: "48%" },
-  { left: "48%", top: "65%" },
-  { left: "63%", top: "61%" },
-  { left: "35%", top: "63%" },
 ];
 
 function loggedOutSave(): GameSave {
@@ -129,22 +142,26 @@ function applySave(
     setAxols: (v: Axol[]) => void;
     setResources: (v: Resources) => void;
     setProfile: (v: TrainerProfile) => void;
-    setQuests: (v: { rolls: number; breeds: number; wins: number }) => void;
+    setQuests: (v: Quests) => void;
     setBattleHistory: (v: BattleHistoryEntry[]) => void;
     setActiveId: (v: number | null) => void;
     setSelectedId: (v: number | null) => void;
     battleId: MutableRefObject<number>;
+    setLastDnaBonusAt: (v: number | undefined) => void;
+    setPondLayouts: (v: PondLayouts) => void;
   },
 ) {
   setIdCounter(save.idCounter);
   primeIds(save.axols);
   set.setAxols(save.axols.map(withCosmetic));
   set.setResources(save.resources);
-  set.setProfile(save.profile);
+  set.setProfile(normalizeProfile(save.profile));
   set.setQuests(save.quests);
   set.setBattleHistory(save.battleHistory);
   set.setActiveId(save.activeId);
   set.setSelectedId(save.selectedId);
+  set.setLastDnaBonusAt(save.lastDnaBonusAt);
+  set.setPondLayouts(normalizePondLayouts(save.pondLayouts ?? save.pondLayout));
   set.battleId.current = save.battleIdCounter;
 }
 
@@ -158,13 +175,9 @@ export default function World() {
     disconnect,
     wallet: adapterWallet,
   } = useWallet();
-  const phantomKey =
-    typeof window !== "undefined"
-      ? (window as Window & { phantom?: { solana?: { publicKey?: { toBase58: () => string } } } }).phantom?.solana?.publicKey?.toBase58()
-      : null;
-  const walletAddress =
-    publicKey?.toBase58() ?? adapterWallet?.adapter.publicKey?.toBase58() ?? phantomKey ?? null;
-  const isLinked = connected || !!adapterWallet?.adapter.connected || !!phantomKey;
+  const walletAddress = publicKey?.toBase58() ?? null;
+  const isLinked = connected && !!walletAddress;
+  const [chainReady, setChainReady] = useState(false);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
 
   const chainClient = useMemo(() => {
@@ -191,7 +204,11 @@ export default function World() {
   profileRef.current = profile;
   const [battleHistory, setBattleHistory] = useState<BattleHistoryEntry[]>([]);
   const battleId = useRef(1);
-  const [quests, setQuests] = useState({ rolls: 0, breeds: 0, wins: 0 });
+  const [quests, setQuests] = useState<Quests>({ rolls: 0, breeds: 0, wins: 0 });
+  const [lastDnaBonusAt, setLastDnaBonusAt] = useState<number | undefined>(undefined);
+  const [pondLayouts, setPondLayouts] = useState<PondLayouts>(EMPTY_POND_LAYOUTS);
+  const [pondArranging, setPondArranging] = useState(false);
+  const [pondArrangeView, setPondArrangeView] = useState<"home" | "collection" | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [viewingPlayer, setViewingPlayer] = useState<PublicPlayer | null>(null);
@@ -205,8 +222,62 @@ export default function World() {
     toastTimer.current = setTimeout(() => setToastMsg(null), 3200);
   }, []);
 
+  const grantProgression = useCallback(
+    (event: ProgressEvent, solaxBurned = 0, extraLevels = 0) => {
+      setProfile((p) => {
+        let next = applyProgressEvent(p, event, solaxBurned);
+        if (extraLevels > 0) next = applySolaxyLevelUps(next, extraLevels);
+        if (next.level > p.level) {
+          queueMicrotask(() => toast(`Trainer level up! Now Lv.${next.level}`));
+        }
+        return next;
+      });
+    },
+    [toast],
+  );
+
+  const tryCompleteDailyQuests = useCallback(
+    (next: Quests) => {
+      const day = utcDayKey();
+      if (next.claimedDay === day || !dailyQuestsComplete(next)) return next;
+      grantProgression("quest_complete");
+      setResources((r) => ({ ...r, eggs: r.eggs + 1 }));
+      toast("Daily quests complete! +1 egg · +activity tickets");
+      return { rolls: 0, breeds: 0, wins: 0, claimedDay: day };
+    },
+    [grantProgression, toast],
+  );
+
+  const bumpQuest = useCallback(
+    (key: keyof Pick<Quests, "rolls" | "breeds" | "wins">) => {
+      setQuests((q) => {
+        const day = utcDayKey();
+        const base =
+          q.claimedDay && q.claimedDay !== day
+            ? { rolls: 0, breeds: 0, wins: 0, claimedDay: undefined }
+            : q;
+        const bumped = { ...base, [key]: base[key] + 1 };
+        return tryCompleteDailyQuests(bumped);
+      });
+    },
+    [tryCompleteDailyQuests],
+  );
+
+  /** Apply Solaxy XP and return how many levels were gained. */
+  const solaxyXpGain = (axol: Axol, xpGain: number) => {
+    let xp = axol.xp + xpGain;
+    let level = axol.level;
+    let levelsGained = 0;
+    while (xp >= xpNeeded(level)) {
+      xp -= xpNeeded(level);
+      level += 1;
+      levelsGained += 1;
+    }
+    return { xp, level, levelsGained };
+  };
+
   const apply = (save: GameSave) =>
-    applySave(save, { setAxols, setResources, setProfile, setQuests, setBattleHistory, setActiveId, setSelectedId, battleId });
+    applySave(save, { setAxols, setResources, setProfile, setQuests, setBattleHistory, setActiveId, setSelectedId, setLastDnaBonusAt, setPondLayouts, battleId });
 
   const snapshot = (): Omit<GameSave, "version" | "savedAt"> => ({
     axols,
@@ -218,6 +289,8 @@ export default function World() {
     selectedId,
     battleIdCounter: battleId.current,
     idCounter: getIdCounter(),
+    lastDnaBonusAt,
+    pondLayouts,
   });
 
   useEffect(() => {
@@ -234,44 +307,105 @@ export default function World() {
     return () => window.removeEventListener("solaxie-wallet-error", onWalletError);
   }, [toast]);
 
-  // Load save when wallet connects.
+  // Load save when wallet connects — chain axols + cloud profile/quests.
   useEffect(() => {
     if (!mounted || !isLinked || !walletAddress) return;
     if (loadedWalletRef.current === walletAddress) return;
     loadedWalletRef.current = walletAddress;
 
     const walletSave = loadWalletSave(walletAddress);
-    if (walletSave) {
-      apply(walletSave);
-      toast(`Welcome back! ${walletSave.axols.length} Solax${walletSave.axols.length === 1 ? "y" : "ies"} restored.`);
-    } else {
-      const start = freshSave();
-      apply(start);
-      saveWallet(walletAddress, start);
-      toast("Wallet linked! Your island awaits.");
-    }
+
+    const hydrate = async () => {
+      const cloud = await fetchCloudSave(walletAddress);
+      const metaProfile = cloud?.profile ?? walletSave?.profile ?? { ...STARTER_PROFILE };
+      const metaQuestsRaw = cloud?.quests ?? walletSave?.quests ?? { rolls: 0, breeds: 0, wins: 0 };
+      const day = utcDayKey();
+      const metaQuests: Quests =
+        metaQuestsRaw.claimedDay && metaQuestsRaw.claimedDay !== day
+          ? { rolls: 0, breeds: 0, wins: 0 }
+          : metaQuestsRaw;
+      const metaHistory = cloud?.battleHistory ?? walletSave?.battleHistory ?? [];
+      const metaActive = cloud?.activeId ?? walletSave?.activeId ?? null;
+      const metaSelected = cloud?.selectedId ?? walletSave?.selectedId ?? null;
+      const metaDnaBonus = cloud?.lastDnaBonusAt ?? walletSave?.lastDnaBonusAt;
+      const metaPond = cloud?.pondLayouts ?? walletSave?.pondLayouts ?? walletSave?.pondLayout;
+      const metaResources = walletSave?.resources ?? STARTING_RESOURCES;
+
+      let ready = false;
+      if (chainClient) {
+        try {
+          ready = await chainClient.isReady();
+          setChainReady(ready);
+          if (ready) {
+            const trainerName = metaProfile.name?.trim() || "Trainer";
+            await chainClient.ensurePlayer(trainerName);
+            const state = await chainClient.refreshState();
+            setAxols(state.axols.map(withCosmetic));
+            setResources({
+              solax: state.solax,
+              dna: metaResources.dna,
+              eggs: metaResources.eggs,
+              energy: state.energy,
+              maxEnergy: 100,
+              streak: metaResources.streak,
+            });
+            if (state.axols.length > 0 && metaActive == null) {
+              setActiveId(state.axols[0].id);
+              setSelectedId(state.axols[0].id);
+            }
+          } else if (walletSave) {
+            apply(walletSave);
+          } else {
+            apply(freshSave());
+          }
+        } catch (e) {
+          console.warn("[chain] hydrate skipped:", e);
+          setChainReady(false);
+          if (walletSave) apply(walletSave);
+          else apply(freshSave());
+        }
+      } else if (walletSave) {
+        apply(walletSave);
+      } else {
+        apply(freshSave());
+      }
+
+      setProfile(normalizeProfile(metaProfile));
+      setQuests(metaQuests);
+      setBattleHistory(metaHistory);
+      if (metaActive != null) setActiveId(metaActive);
+      if (metaSelected != null) setSelectedId(metaSelected);
+      if (metaDnaBonus != null) setLastDnaBonusAt(metaDnaBonus);
+      if (metaPond) setPondLayouts(normalizePondLayouts(metaPond));
+      if (cloud?.battleHistory) battleId.current = Math.max(battleId.current, ...metaHistory.map((b) => b.id), 0) + 1;
+
+      const count = ready && chainClient
+        ? (await chainClient.fetchOwnedAxols()).length
+        : walletSave?.axols.length ?? 0;
+      toast(
+        count > 0
+          ? `Welcome back! ${count} Solax${count === 1 ? "y" : "ies"} on-chain.`
+          : ready
+            ? "Wallet linked! Mint your first Solaxy at the DNA Core."
+            : "Wallet linked! Your island awaits.",
+      );
+    };
+
+    void hydrate();
     setWallet(shortAddr(walletAddress));
     setWalletFull(walletAddress);
     void fetchGlobalFeed().then(setFeed).catch(() => {});
     setScreen("home");
     setBreedOpen(false);
     sfx.startAmbient();
-
-    void (async () => {
-      if (!chainClient) return;
-      try {
-        const ready = await chainClient.isReady();
-        if (ready) await chainClient.ensurePlayer("Trainer");
-      } catch (e) {
-        console.warn("[chain] init_player skipped:", e);
-      }
-    })();
   }, [mounted, isLinked, walletAddress, chainClient]);
 
   // Log out when wallet disconnects (skip while connecting).
   useEffect(() => {
     if (!mounted || connecting || isLinked) return;
     loadedWalletRef.current = null;
+    setPondArranging(false);
+    setPondArrangeView(null);
     apply(loggedOutSave());
     setWallet(null);
     setWalletFull(null);
@@ -289,17 +423,28 @@ export default function World() {
     });
   }, [mounted]);
 
-  // Auto-save progress — wallet-linked profiles only.
+  // Auto-save progress — wallet-linked profiles (local cache + cloud).
   useEffect(() => {
     if (!mounted || !walletFull) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      saveWallet(walletFull, buildSave(snapshot()));
+      const snap = buildSave(snapshot());
+      saveWallet(walletFull, snap);
+      void postCloudSave({
+        wallet: walletFull,
+        profile: snap.profile,
+        quests: snap.quests,
+        battleHistory: snap.battleHistory,
+        activeId: snap.activeId,
+        selectedId: snap.selectedId,
+        lastDnaBonusAt: snap.lastDnaBonusAt,
+        pondLayouts: snap.pondLayouts,
+      });
     }, 600);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [mounted, walletFull, axols, resources, profile, quests, battleHistory, activeId, selectedId]);
+  }, [mounted, walletFull, axols, resources, profile, quests, battleHistory, activeId, selectedId, lastDnaBonusAt, pondLayouts]);
 
   // Sync public profile for global leaderboard & PvP matching.
   useEffect(() => {
@@ -318,6 +463,20 @@ export default function World() {
       if (syncTimer.current) clearTimeout(syncTimer.current);
     };
   }, [mounted, walletFull, profile, axols, activeId, quests]);
+
+  // Keep displayed SOLAX in sync with wallet SPL balance.
+  useEffect(() => {
+    if (!mounted || !walletFull || !chainClient) return;
+    let cancelled = false;
+    const syncBal = () => {
+      void chainClient.fetchTokenBalance().then((solax) => {
+        if (!cancelled) setResources((r) => ({ ...r, solax }));
+      });
+    };
+    syncBal();
+    const iv = setInterval(syncBal, 12_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [mounted, walletFull, chainClient]);
 
   // Poll the global live feed (shared by all players).
   useEffect(() => {
@@ -339,10 +498,9 @@ export default function World() {
     void postGlobalFeed({ who, what, color, wallet: walletFull ?? undefined });
   }, [walletFull]);
 
-  const recordEconomy = useCallback((spent: number, burned?: number) => {
-    const b = burned ?? spent;
-    if (spent <= 0 && b <= 0) return;
-    void postEconomyStats({ spent, burned: b });
+  const recordEconomy = useCallback((amount: number) => {
+    if (amount <= 0) return;
+    void postEconomyStats({ spent: amount, burned: amount });
   }, []);
 
   const pushFeed = announceFeed;
@@ -359,38 +517,113 @@ export default function World() {
     return true;
   };
 
-  // ---- Actions (local state; chain calls stubbed) ----
-  const doRoll = async (luck = 0): Promise<Axol | null> => {
+  const applyChainState = useCallback(async () => {
+    if (!chainClient) return;
+    const state = await chainClient.refreshState();
+    setAxols(state.axols.map(withCosmetic));
+    setResources((r) => ({
+      ...r,
+      solax: state.solax,
+      energy: state.energy,
+      maxEnergy: 100,
+    }));
+  }, [chainClient]);
+
+  /** Burn real pump.fun SOLAX from wallet, then refresh displayed balance. */
+  const burnAndRefresh = useCallback(
+    async (cost: number): Promise<boolean> => {
+      if (!chainClient || !requireWallet()) return false;
+      if (resources.solax < cost) {
+        toast(`Need ${cost.toLocaleString()} SOLAX in wallet`);
+        return false;
+      }
+      try {
+        toast("Confirm burn in your wallet…");
+        await chainClient.burnSolax(cost);
+        await applyChainState();
+        recordEconomy(cost);
+        return true;
+      } catch (e) {
+        console.error("[burn]", e);
+        toast("Transaction cancelled or failed.");
+        return false;
+      }
+    },
+    [chainClient, resources.solax, toast, applyChainState, recordEconomy],
+  );
+
+  const doRoll = async (_luck = 0): Promise<Axol | null> => {
     if (!requireWallet()) return null;
-    await chain.roll(); // TODO: real mint
+
+    if (chainClient && chainReady) {
+      if (resources.solax < COSTS.roll.solax) {
+        toast(`Need ${COSTS.roll.solax.toLocaleString()} SOLAX in wallet to mint.`);
+        return null;
+      }
+      toast("Confirm mint in your wallet…");
+      try {
+        const { axol } = await chainClient.mintAxol();
+        const rolled = withCosmetic(axol);
+        await applyChainState();
+        bumpQuest("rolls");
+        grantProgression("hatch", COSTS.roll.solax);
+        recordEconomy(COSTS.roll.solax);
+        pushFeed(`minted ${rolled.rarity} ${CLASS_META[rolled.cls].name} on-chain!`, CLASS_META[rolled.cls].color);
+        return rolled;
+      } catch (e) {
+        console.error("[mint]", e);
+        toast("Transaction cancelled or failed.");
+        return null;
+      }
+    }
+
     let rolled: Axol | null = null;
-    setResources((r) => {
-      if (r.dna < COSTS.roll.dna || r.energy < COSTS.roll.energy) return r;
-      rolled = withCosmetic(randomAxol({ rarity: rollRarity(luck) }));
-      return { ...r, solax: r.solax - COSTS.roll.solax, dna: r.dna - COSTS.roll.dna, energy: r.energy - COSTS.roll.energy };
-    });
+    if (!(await burnAndRefresh(COSTS.roll.solax))) return null;
+    rolled = withCosmetic(randomAxol({ rarity: rollRarity(_luck) }));
     if (!rolled) return null;
     setAxols((list) => [...list, rolled!]);
-    setQuests((q) => ({ ...q, rolls: q.rolls + 1 }));
-    if (COSTS.roll.solax > 0) recordEconomy(COSTS.roll.solax, COSTS.roll.solax);
+    bumpQuest("rolls");
+    grantProgression("hatch", COSTS.roll.solax);
     pushFeed(`rolled a ${rolled!.rarity} ${CLASS_META[rolled!.cls].name}!`, CLASS_META[rolled!.cls].color);
     return rolled;
   };
 
-  const doBreed = async (aId: number, bId: number, extraFee = 0): Promise<Axol | null> => {
+  const doBreed = async (aId: number, bId: number, _extraFee = 0): Promise<Axol | null> => {
     if (!requireWallet()) return null;
     const a = axols.find((x) => x.id === aId);
     const b = axols.find((x) => x.id === bId);
     if (!a || !b) return null;
-    const solaxCost = COSTS.breed.solax + extraFee;
-    if (resources.solax < solaxCost || resources.eggs < COSTS.breed.eggs) return null;
-    await chain.breed(aId, bId); // TODO: real breed
+
+    if (chainClient && chainReady) {
+      if (resources.energy < ON_CHAIN_COSTS.breedEnergy) {
+        toast("Not enough energy to breed.");
+        return null;
+      }
+      toast("Confirm breed in your wallet…");
+      try {
+        const { child } = await chainClient.breed(aId, bId);
+        const hatched = withCosmetic(child);
+        await applyChainState();
+        setSelectedId(hatched.id);
+        bumpQuest("breeds");
+        grantProgression("breed");
+        pushFeed(`hatched Gen ${hatched.generation} ${CLASS_META[hatched.cls].name} on-chain!`, CLASS_META[hatched.cls].color);
+        return hatched;
+      } catch (e) {
+        console.error("[breed]", e);
+        toast("Transaction cancelled or failed.");
+        return null;
+      }
+    }
+
+    const solaxCost = COSTS.breed.solax + _extraFee;
+    if (!(await burnAndRefresh(solaxCost)) || resources.eggs < 1) return null;
     const child = breedAxol(a, b);
-    setResources((r) => ({ ...r, solax: r.solax - solaxCost, eggs: r.eggs - COSTS.breed.eggs }));
+    setResources((r) => ({ ...r, eggs: r.eggs - 1 }));
     setAxols((list) => [...list.map((x) => (x.id === aId || x.id === bId ? { ...x, breedCount: x.breedCount + 1 } : x)), child]);
     setSelectedId(child.id);
-    setQuests((q) => ({ ...q, breeds: q.breeds + 1 }));
-    recordEconomy(solaxCost, solaxCost);
+    bumpQuest("breeds");
+    grantProgression("breed", solaxCost);
     pushFeed(`hatched a Gen ${child.generation} ${CLASS_META[child.cls].name}!`, CLASS_META[child.cls].color);
     return child;
   };
@@ -399,22 +632,54 @@ export default function World() {
     if (!requireWallet()) return null;
     const mine = axols.find((x) => x.id === myId);
     if (!mine) return null;
-    if (resources.energy < COSTS.battle.energy) return null;
     const enemy = enemyOverride ?? wildAxol(mine);
-    await chain.battle(myId, enemy.id); // TODO: real battle
+
+    if (chainClient && chainReady) {
+      if (resources.energy < COSTS.battle.energy) return null;
+      const opponentOnChain = await chainClient.fetchAxolExists(enemy.id);
+      if (opponentOnChain) {
+        toast("Confirm battle in your wallet…");
+        try {
+          const { won } = await chainClient.battle(myId, enemy.id, battleId.current++);
+          await applyChainState();
+          const result: BattleResult = {
+            win: won,
+            myRoll: won ? 100 : 40,
+            enemyRoll: won ? 40 : 100,
+            advantage: "none",
+            rewardXp: won ? 40 : 15,
+          };
+          pushFeed(
+            won ? `won an on-chain battle vs ${enemy.name}!` : `lost to ${enemy.name} on-chain…`,
+            won ? "#54e07a" : "#ff6b6b",
+          );
+          return { mine, enemy, result };
+        } catch (e) {
+          console.error("[battle]", e);
+          toast("Transaction cancelled or failed.");
+          return null;
+        }
+      }
+      toast("Practice battle — wild Solaxy (not on-chain yet).");
+    }
+
+    if (resources.energy < COSTS.battle.energy) return null;
     const result: BattleResult = resolveBattle(mine, enemy);
-    setResources((r) => ({ ...r, energy: Math.max(0, r.energy - 10), solax: r.solax + result.rewardSolax, dna: r.dna + (result.win ? 5 : 0) }));
+    const gain = solaxyXpGain(mine, result.rewardXp);
+    setResources((r) => ({
+      ...r,
+      energy: Math.max(0, r.energy - COSTS.battle.energy),
+      dna: r.dna + (result.win ? 5 : 0),
+    }));
     setAxols((list) =>
       list.map((x) => {
         if (x.id !== myId) return x;
-        const need = xpNeeded(x.level);
-        let xp = x.xp + result.rewardXp;
-        let level = x.level;
-        if (xp >= need) { level += 1; xp -= need; }
-        return { ...x, xp, level };
-      })
+        return { ...x, xp: gain.xp, level: gain.level };
+      }),
     );
-    if (result.win) setQuests((q) => ({ ...q, wins: q.wins + 1 }));
+    if (gain.levelsGained > 0) {
+      setProfile((p) => applySolaxyLevelUps(p, gain.levelsGained));
+    }
     pushFeed(result.win ? `won a battle vs ${enemy.name}!` : `lost to ${enemy.name}…`, result.win ? "#54e07a" : "#ff6b6b");
     return { mine, enemy, result };
   };
@@ -423,35 +688,21 @@ export default function World() {
     price: number,
     reward?: Partial<Resources>,
     label?: string,
-    itemId?: string,
+    _itemId?: string,
   ): Promise<boolean> => {
     if (!requireWallet()) return false;
 
-    if (price > 0 && itemId) {
+    if (price > 0) {
       if (!chainClient) {
         toast("Wallet not ready — reconnect and try again.");
         return false;
       }
       setPurchasing(true);
-      toast("Confirm the purchase in your wallet…");
       try {
-        const ready = await chainClient.isReady();
-        if (!ready) {
-          toast("Game program not deployed on this network yet.");
-          return false;
-        }
-        await chainClient.shopPurchase(price, itemId);
-      } catch (e) {
-        console.error("[purchase]", e);
-        toast("Transaction cancelled or failed.");
-        return false;
+        if (!(await burnAndRefresh(price))) return false;
       } finally {
         setPurchasing(false);
       }
-    } else if (price > 0) {
-      if (resources.solax < price) return false;
-      setResources((r) => ({ ...r, solax: r.solax - price }));
-      recordEconomy(price, price);
     }
 
     if (reward) {
@@ -459,7 +710,6 @@ export default function World() {
         const b = { ...r };
         if (reward.dna) b.dna += reward.dna;
         if (reward.eggs) b.eggs += reward.eggs;
-        if (reward.solax) b.solax += reward.solax;
         if (reward.energy) b.energy = Math.min(r.maxEnergy, r.energy + reward.energy);
         return b;
       });
@@ -467,8 +717,52 @@ export default function World() {
 
     if (label && price > 0) {
       announceFeed(`bought ${label}!`, "#2fe0cf");
+      grantProgression("market_purchase", price);
     }
 
+    return true;
+  };
+
+  const homePondAxols = useMemo(() => {
+    return [...axols].sort((a, b) => b.level - a.level).slice(0, 5);
+  }, [axols]);
+
+  const openPondArrange = (view: "home" | "collection") => {
+    sfx.click();
+    setPondArrangeView(view);
+    setPondArranging(true);
+  };
+
+  const closePondArrange = () => {
+    sfx.click();
+    setPondArranging(false);
+    setPondArrangeView(null);
+    toast("Pond layout saved!");
+  };
+
+  const setPondSpot = (axolId: number, spot: PondSpotPct) => {
+    if (!pondArrangeView) return;
+    setPondLayouts((layouts) => setLayoutSpot(layouts, pondArrangeView, axolId, spot));
+  };
+
+  const resetPondLayout = () => {
+    if (!pondArrangeView) return;
+    setPondLayouts((layouts) => resetLayoutView(layouts, pondArrangeView));
+    toast("Pond positions reset to default");
+  };
+
+  const claimDnaBonus = (): boolean => {
+    if (!requireWallet()) return false;
+    const remaining = dnaBonusRemaining(lastDnaBonusAt);
+    if (remaining > 0) {
+      toast(`Next bonus in ${formatCooldown(remaining)}`);
+      return false;
+    }
+    setResources((r) => ({ ...r, dna: r.dna + DNA_BONUS.amount }));
+    setLastDnaBonusAt(Date.now());
+    grantProgression("dna_bonus");
+    sfx.dnaBonus();
+    toast(`Claimed +${DNA_BONUS.amount} DNA!`);
     return true;
   };
 
@@ -477,47 +771,70 @@ export default function World() {
     pushFeed(`acquired a ${a.rarity} ${CLASS_META[a.cls].name}!`, CLASS_META[a.cls].color);
   };
 
+  const releaseAxol = (id: number): boolean => {
+    if (!requireWallet()) return false;
+    if (axols.length <= 1) {
+      toast("Keep at least one Solaxy in your pond!");
+      return false;
+    }
+    const a = axols.find((x) => x.id === id);
+    if (!a) return false;
+
+    const next = axols.filter((x) => x.id !== id);
+    setAxols(next);
+    setPondLayouts((layouts) => {
+      const strip = (layout: PondLayout) => {
+        const copy = { ...layout };
+        delete copy[String(id)];
+        return copy;
+      };
+      return { home: strip(layouts.home), collection: strip(layouts.collection) };
+    });
+
+    if (activeId === id) setActiveId(next[0]?.id ?? null);
+    if (selectedId === id) setSelectedId(next[0]?.id ?? null);
+
+    sfx.whoosh();
+    toast(`Released ${CLASS_META[a.cls].name} #${a.id} — gone forever`);
+    announceFeed(`released ${CLASS_META[a.cls].name} #${a.id}`, "#ff6b6b");
+    return true;
+  };
+
   // Buy `blocks` × 10 energy at 100k SOLAX each (capped at the max bar).
-  const buyEnergy = (blocks: number): boolean => {
+  const buyEnergy = async (blocks: number): Promise<boolean> => {
     if (!requireWallet()) return false;
     const cost = blocks * ENERGY_REFILL.solaxPerBlock;
     const gain = blocks * ENERGY_REFILL.perBlock;
-    if (resources.solax < cost || blocks <= 0) return false;
-    setResources((r) => ({ ...r, solax: r.solax - cost, energy: Math.min(r.maxEnergy, r.energy + gain) }));
-    recordEconomy(cost, cost);
+    if (blocks <= 0) return false;
+    if (!(await burnAndRefresh(cost))) return false;
+    setResources((r) => ({ ...r, energy: Math.min(r.maxEnergy, r.energy + gain) }));
+    grantProgression("energy_refill", cost);
     announceFeed(`refilled ${gain} energy`, "#ffd24a");
     return true;
   };
 
-  const feedAxol = (id: number): boolean => {
+  const feedAxol = async (id: number): Promise<boolean> => {
     if (!requireWallet()) return false;
     const a = axols.find((x) => x.id === id);
     if (!a) return false;
     const cost = feedCost(a.level);
-    if (resources.solax < cost) return false;
-    setResources((r) => ({ ...r, solax: r.solax - cost }));
+    if (!(await burnAndRefresh(cost))) return false;
+    const gain = solaxyXpGain(a, feedXp(a.level));
     setAxols((list) =>
-      list.map((x) => {
-        if (x.id !== id) return x;
-        const need = xpNeeded(x.level);
-        let xp = x.xp + feedXp(x.level);
-        let level = x.level;
-        if (xp >= need) { level += 1; xp -= need; }
-        return { ...x, xp, level };
-      })
+      list.map((x) => (x.id === id ? { ...x, xp: gain.xp, level: gain.level } : x)),
     );
-    recordEconomy(cost, cost);
+    grantProgression("feed", cost, gain.levelsGained);
     announceFeed(`fed ${CLASS_META[a.cls].name} #${a.id}`, CLASS_META[a.cls].color);
+    sfx.feed();
     return true;
   };
 
-  const powerUp = (id: number): boolean => {
+  const powerUp = async (id: number): Promise<boolean> => {
     if (!requireWallet()) return false;
     const a = axols.find((x) => x.id === id);
     if (!a) return false;
     const cost = powerUpCost(a.level);
-    if (resources.solax < cost) return false;
-    setResources((r) => ({ ...r, solax: r.solax - cost }));
+    if (!(await burnAndRefresh(cost))) return false;
     setAxols((list) =>
       list.map((x) =>
         x.id === id
@@ -531,11 +848,12 @@ export default function World() {
               skill: Math.round(x.skill * 1.06),
               morale: Math.round(x.morale * 1.06),
             }
-          : x
-      )
+          : x,
+      ),
     );
-    recordEconomy(cost, cost);
+    grantProgression("power_up", cost);
     announceFeed(`powered up ${CLASS_META[a.cls].name} #${a.id} to Lv.${a.level + 1}!`, CLASS_META[a.cls].color);
+    sfx.powerUp();
     return true;
   };
 
@@ -595,6 +913,8 @@ export default function World() {
     onDisconnect: async () => {
       if (walletFull) saveWallet(walletFull, buildSave(snapshot()));
       loadedWalletRef.current = null;
+      setPondArranging(false);
+      setPondArrangeView(null);
       try {
         await disconnect();
       } catch {
@@ -603,6 +923,7 @@ export default function World() {
       apply(loggedOutSave());
       setWallet(null);
       setWalletFull(null);
+      setChainReady(false);
       setFeed([]);
       setScreen("home");
       setBreedOpen(false);
@@ -620,12 +941,16 @@ export default function World() {
     battleHistory,
     recordBattle: (entry) => {
       setBattleHistory((h) => [{ ...entry, id: battleId.current++ }, ...h].slice(0, 50));
+      setProfile((p) => {
+        let next = applyProgressEvent(p, entry.win ? "battle_win" : "battle_loss");
+        if (entry.win) next = { ...next, chestWins: Math.min(p.chestTarget, p.chestWins + 1) };
+        if (next.level > p.level) {
+          queueMicrotask(() => toast(`Trainer level up! Now Lv.${next.level}`));
+        }
+        return next;
+      });
+      if (entry.win) bumpQuest("wins");
       if (entry.win) {
-        setProfile((p) => ({
-          ...p,
-          chestWins: Math.min(p.chestTarget, p.chestWins + 1),
-          trophies: Math.max(0, p.trophies + entry.trophiesDelta),
-        }));
         announceFeed(`won a battle with ${entry.axolName}!`, CLASS_META[entry.axolCls].color);
       } else {
         announceFeed(`lost a battle vs ${entry.opponent}`, "#ff6b6b");
@@ -636,6 +961,7 @@ export default function World() {
     screen,
     setScreen: (s) => {
       if (!wallet) return;
+      if (pondArranging) closePondArrange();
       setScreen(s);
     },
     selectedId,
@@ -653,12 +979,23 @@ export default function World() {
     openLeaderboard: () => setLeaderboardOpen(true),
     purchase,
     addAxol,
+    releaseAxol,
     feedAxol,
     powerUp,
     buyEnergy,
     setActive: setActiveId,
     toast,
     recordEconomy,
+    lastDnaBonusAt,
+    claimDnaBonus,
+    pondLayouts,
+    pondArranging,
+    pondArrangeView,
+    openPondArrange,
+    closePondArrange,
+    setPondSpot,
+    resetPondLayout,
+    chainReady,
   };
 
   const onBuilding = (t: Target) => (t === "breed" ? setBreedOpen(true) : setScreen(t));
@@ -717,31 +1054,34 @@ export default function World() {
               <BuildingButton key={b.id} b={b} onClick={() => onBuilding(b.target)} />
             ))}
 
-            <div className="pointer-events-none absolute left-1/2 top-[37%] -translate-x-1/2 -translate-y-1/2 text-center">
-              <div className="rounded-lg border-2 border-[#5e3b1a] bg-gradient-to-b from-[#c98a4b] to-[#8a5a2b] px-4 py-1 shadow-lg">
-                <span className="font-display font-extrabold tracking-wide text-[#fff4e0]" style={{ textShadow: "0 2px 0 #6b4220" }}>
-                  YOUR POND
-                </span>
-              </div>
-              <div className="mx-auto mt-1 w-fit rounded-full bg-ink-900/70 px-3 py-0.5 text-[0.62rem] font-semibold text-white/80">
-                {axols.length} Solax{axols.length === 1 ? "y" : "ies"} living here
-              </div>
-            </div>
-
-            {[...axols].sort((a, b) => b.id - a.id).slice(0, 5).map((a, i) => (
-              <PondAxol key={a.id} axol={a} pos={POND_SPOTS[i % POND_SPOTS.length]} delay={i * 0.4} onClick={() => { setSelectedId(a.id); setScreen("collection"); }} />
-            ))}
+            {axols.length > 0 && (
+              <PondLayer
+                axols={homePondAxols}
+                layout={layoutForView(pondLayouts, "home")}
+                arranging={false}
+                variant="home"
+                onSpotChange={setPondSpot}
+                onPick={(a) => {
+                  setSelectedId(a.id);
+                  setScreen("collection");
+                }}
+              />
+            )}
           </div>
 
-          <aside className="absolute right-3 top-16 z-20 hidden w-60 lg:block">
-            <QuestCard quests={quests} />
+          <aside className="absolute right-3 top-16 z-20 hidden flex-col gap-3 lg:flex">
+            <QuestCard quests={quests} tickets={profile.activityTickets ?? 0} />
           </aside>
 
-          <aside className="absolute bottom-24 left-3 z-20 hidden w-72 md:block">
+          <aside className="absolute bottom-[4.75rem] right-3 z-20 hidden lg:block">
+            <SpendBurnMeter variant="sidebar" />
+          </aside>
+
+          <aside className="absolute bottom-[4.75rem] left-3 z-20 hidden max-h-40 w-64 md:block lg:max-h-44 lg:w-72">
             <FeedCard feed={feed} />
           </aside>
 
-          <SpendBurnMeter />
+          <SpendBurnMeter variant="floating" />
         </main>
       ) : (
         <div className="fixed inset-0 z-40 overflow-y-auto">
@@ -771,7 +1111,17 @@ export default function World() {
 
       <Toast msg={toastMsg} />
       <ConnectWalletModal open={walletModalOpen} onClose={() => setWalletModalOpen(false)} onError={toast} />
-      <MuteButton />
+
+      {pondArranging && pondArrangeView && (
+        <PondArrangeOverlay
+          axols={pondArrangeView === "home" ? homePondAxols : axols}
+          layout={layoutForView(pondLayouts, pondArrangeView)}
+          view={pondArrangeView}
+          onSpotChange={setPondSpot}
+          onDone={closePondArrange}
+          onReset={resetPondLayout}
+        />
+      )}
     </>
   );
 }
@@ -789,20 +1139,9 @@ function MuteButton() {
         if (!nowMuted) sfx.startAmbient();
       }}
       aria-label={muted ? "Unmute" : "Mute"}
-      className="fixed bottom-24 right-3 z-[60] grid h-11 w-11 place-items-center rounded-full border border-white/15 bg-ink-900/75 text-lg shadow-md backdrop-blur transition hover:scale-105 hover:border-white/40"
+      className="fixed bottom-6 right-4 z-[60] grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-ink-900/75 text-base shadow-md backdrop-blur transition hover:scale-105 hover:border-white/40"
     >
-      {muted ? (
-        <svg viewBox="0 0 24 24" className="h-5 w-5 drop-shadow" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <path d="M11 5L6 9H2v6h4l5 4V5z" strokeLinejoin="round" />
-          <path d="M16 9l5 5M21 9l-5 5" strokeLinecap="round" />
-        </svg>
-      ) : (
-        <svg viewBox="0 0 24 24" className="h-5 w-5 drop-shadow" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <path d="M11 5L6 9H2v6h4l5 4V5z" strokeLinejoin="round" />
-          <path d="M15.5 8.5a5 5 0 010 7" strokeLinecap="round" />
-          <path d="M18 6a8.5 8.5 0 010 12" strokeLinecap="round" />
-        </svg>
-      )}
+      {muted ? "🔇" : "🔊"}
     </button>
   );
 }
@@ -940,64 +1279,7 @@ function BuildingButton({ b, onClick }: { b: Building; onClick: () => void }) {
   );
 }
 
-function PondAxol({ axol, pos, delay, onClick }: { axol: Axol; pos: { left: string; top: string }; delay: number; onClick: () => void }) {
-  const color = CLASS_META[axol.cls].color;
-  const size = 84;
-  return (
-    <button
-      onClick={onClick}
-      className="group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
-      style={{ left: pos.left, top: pos.top }}
-    >
-      <div className="mb-1 rounded-md bg-ink-900/70 px-2 py-0.5 text-center opacity-90 transition group-hover:opacity-100">
-        <div className="whitespace-nowrap text-[0.62rem] font-extrabold leading-tight text-white">
-          {CLASS_META[axol.cls].name} #{axol.id}
-        </div>
-        <div className="text-[0.5rem] text-white/60">{axol.status}</div>
-      </div>
-
-      <div className="relative transition-transform duration-150 group-hover:scale-105" style={{ width: size, height: size + 16 }}>
-        <div className="absolute left-1/2 -translate-x-1/2" style={{ bottom: 4, width: size * 0.78, height: size * 0.3 }}>
-          <span
-            className="absolute left-1/2 top-1/2 animate-ripple rounded-[50%] border border-cyan-100/60"
-            style={{ width: "100%", height: "100%", animationDelay: `${delay}s` }}
-          />
-          <span
-            className="absolute left-1/2 top-1/2 animate-ripple rounded-[50%] border border-cyan-100/40"
-            style={{ width: "100%", height: "100%", animationDelay: `${delay + 1.7}s` }}
-          />
-        </div>
-
-        <span
-          className="absolute bottom-1 left-1/2 animate-contact rounded-[50%] bg-black/55 blur-md"
-          style={{ width: size * 0.56, height: size * 0.16, animationDelay: `${delay}s` }}
-        />
-        <span
-          className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full blur-xl"
-          style={{ width: size * 0.5, height: size * 0.32, background: `${color}30` }}
-        />
-
-        <span className="absolute left-2 top-4 h-1 w-1 animate-sparkle rounded-full bg-white" style={{ animationDelay: `${delay + 0.3}s` }} />
-        <span className="absolute right-3 top-7 h-1.5 w-1.5 animate-sparkle rounded-full" style={{ background: color, animationDelay: `${delay + 1.2}s` }} />
-        <span className="absolute right-6 top-2 h-1 w-1 animate-sparkle rounded-full bg-white" style={{ animationDelay: `${delay + 2.1}s` }} />
-
-        <div className="absolute inset-x-0 top-0 animate-bob" style={{ animationDelay: `${delay}s` }}>
-          <div className="origin-bottom animate-breathe" style={{ animationDelay: `${delay}s` }}>
-            <img
-              src={axolSprite(axol)}
-              alt={CLASS_META[axol.cls].name}
-              className="mx-auto"
-              style={{ width: size, height: size, objectFit: "contain", filter: `drop-shadow(0 7px 6px rgba(0,0,0,0.4)) drop-shadow(0 0 12px ${CLASS_META[axol.cls].color}44)` }}
-              draggable={false}
-            />
-          </div>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function QuestCard({ quests }: { quests: { rolls: number; breeds: number; wins: number } }) {
+function QuestCard({ quests, tickets }: { quests: Quests; tickets: number }) {
   const rows = [
     { label: "Win 3 battles", prog: Math.min(quests.wins, 3), total: 3 },
     { label: "Roll a Solaxy", prog: Math.min(quests.rolls, 1), total: 1 },
@@ -1024,9 +1306,12 @@ function QuestCard({ quests }: { quests: { rolls: number; breeds: number; wins: 
           );
         })}
       </div>
-      <div className="mt-2 flex items-center justify-center gap-2 border-t border-white/10 pt-2">
-        <img src="/icons/egg.png" alt="" className="h-6 w-6" />
-        <span className="text-[0.66rem] font-bold text-white/80">Reward: Mystery Egg</span>
+      <div className="mt-2 flex flex-col items-center justify-center gap-1 border-t border-white/10 pt-2">
+        <div className="flex items-center gap-2">
+          <img src="/icons/egg.png" alt="" className="h-6 w-6" />
+          <span className="text-[0.66rem] font-bold text-white/80">Reward: Mystery Egg + activity tickets</span>
+        </div>
+        <span className="text-[0.58rem] font-bold text-violet-300/90">Season total: {tickets.toLocaleString()} tickets</span>
       </div>
     </div>
   );
@@ -1060,9 +1345,23 @@ const NAV: { id: Screen; label: string; icon: string }[] = [
 ];
 
 function BottomNav({ current, onNav }: { current: Screen; onNav: (m: Screen) => void }) {
+  const [muted, setMuted] = useState(false);
+  useEffect(() => setMuted(sfx.isMuted()), []);
+
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 flex justify-center bg-gradient-to-t from-ink-900/90 to-transparent pb-3 pt-6">
-      <div className="flex items-end gap-1 rounded-full border border-white/15 bg-ink-850/90 px-2.5 py-2 shadow-panel backdrop-blur">
+      <div className="flex items-end gap-2 rounded-full border border-white/15 bg-ink-850/90 px-2.5 py-2 shadow-panel backdrop-blur">
+        <button
+          onClick={() => {
+            const nowMuted = sfx.toggleMuted();
+            setMuted(nowMuted);
+            if (!nowMuted) sfx.startAmbient();
+          }}
+          aria-label={muted ? "Unmute" : "Mute"}
+          className="mb-1 grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-base text-white/70 transition hover:bg-white/15 hover:text-white"
+        >
+          {muted ? "🔇" : "🔊"}
+        </button>
         {NAV.map((n) => {
           const active = current === n.id;
           return (

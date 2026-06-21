@@ -124,6 +124,9 @@ export function ProfileDropdown({ world }: { world: WorldApi }) {
                   <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5 text-[0.66rem] font-bold text-white/75">
                     {p.trophies.toLocaleString()} trophies
                   </span>
+                  <span className="rounded-full border border-violet-300/25 bg-violet-400/10 px-2.5 py-0.5 text-[0.66rem] font-bold text-violet-200">
+                    {(p.activityTickets ?? 0).toLocaleString()} tickets
+                  </span>
                 </div>
                 <div className="mt-3 w-full">
                   <div className="mb-1 flex items-center justify-between text-[0.6rem] font-bold">
@@ -142,13 +145,14 @@ export function ProfileDropdown({ world }: { world: WorldApi }) {
                 <ActionRow icon="/icon-collection.png" label="Inventory" onClick={() => { world.setScreen("collection"); close(); }} />
                 <ActionRow icon="/icon-arena.png" label="Battle History" onClick={() => { world.setScreen("empire"); close(); world.toast("Open Battle History tab in Empire Hall"); }} />
                 <ActionRow icon="/avatar-axolotl.png" label="Cosmetics" onClick={() => setView("cosmetics")} />
-                <ActionRow icon="/icon-energy.png" label="Settings" onClick={() => world.toast("Settings coming soon!")} />
+                <ActionRow icon="/icon-energy.png" label="Settings" onClick={() => world.toast("Settings — coming in Version 1.3")} />
               </div>
 
               {/* stats */}
               <div className="mt-4">
                 <div className="mb-2 font-display text-[0.62rem] font-extrabold uppercase tracking-[0.16em] text-brand-200/80">Trainer Stats</div>
                 <div className="grid grid-cols-2 gap-2">
+                  <StatCard label="Tickets" value={(p.activityTickets ?? 0).toLocaleString()} accent="#a779ff" />
                   <StatCard label="Solaxies" value={String(stats.axols)} accent="#54e07a" />
                   <StatCard label="Wins" value={String(stats.wins)} accent="#ffd24a" />
                   <StatCard label="Highest Gen" value={String(stats.highestGen)} accent="#3db4ff" />

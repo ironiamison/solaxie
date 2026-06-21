@@ -8,6 +8,7 @@ import {
 import type { PublicPlayer } from "@/lib/public-player";
 import { avatarForPlayer } from "@/lib/public-player";
 import { LeaderboardPanel } from "../LeaderboardPanel";
+import { leagueTierProgress } from "@/lib/profile";
 import type { WorldApi } from "../world";
 import { Panel, ScreenShell, ScreenTop, SectionTitle } from "../ScreenChrome";
 
@@ -28,6 +29,7 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
         trophies: guest.trophies,
         leagueMax: 1600,
         rank: guest.rank,
+        activityTickets: guest.activityTickets ?? 0,
         chestWins: 0,
         chestTarget: 10,
         chestLevel: 1,
@@ -50,7 +52,7 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
   }, [empireAxols, guest, isGuest, world.quests.wins]);
 
   const chestPct = Math.round((p.chestWins / p.chestTarget) * 100);
-  const leaguePct = Math.round((p.trophies / p.leagueMax) * 100);
+  const leaguePct = Math.round(leagueTierProgress(p.trophies).pct);
   const xpPct = Math.round((p.xp / p.xpToNext) * 100);
   const pfp = isGuest ? avatarForPlayer(guest!) : avatarSrc(p.avatarId);
 
@@ -159,6 +161,16 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
                 <div className="h-full rounded-full bg-brand-400/80" style={{ width: `${xpPct}%` }} />
               </div>
             </div>
+
+            <div className="mt-3 rounded-2xl border border-violet-400/20 bg-violet-500/5 p-3">
+              <div className="mb-1 flex justify-between text-[0.6rem] font-bold text-white/55">
+                <span>Activity tickets · tracking live</span>
+                <span className="text-violet-200">{(p.activityTickets ?? 0).toLocaleString()}</span>
+              </div>
+              <p className="text-[0.58rem] leading-snug text-white/45">
+                Tickets stack as you play. Season payouts + ticket leaderboard ship with SOLAX launch.
+              </p>
+            </div>
           </Panel>
 
           <Panel className="relative overflow-hidden p-4 sm:p-5 lg:col-span-7">
@@ -228,7 +240,7 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
                 </div>
               ))}
             </div>
-            <button type="button" onClick={() => world.toast("All legends coming soon!")} className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 font-display text-[0.72rem] font-extrabold text-white/70 transition hover:bg-white/10">
+            <button type="button" onClick={() => world.toast("Hall of Legends — track season records in Empire Hall")} className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 font-display text-[0.72rem] font-extrabold text-white/70 transition hover:bg-white/10">
               View All Legends
             </button>
           </Panel>
@@ -293,7 +305,7 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
                           vs {b.opponent}
                         </p>
                         <p className="text-[0.58rem] text-white/50">
-                          {b.axolName} · {b.win ? `+${b.rewardSolax} SOLAX` : "Defeat"}
+                          {b.axolName} · {b.win ? `+${b.rewardXp} XP · +5 DNA` : "Defeat"}
                         </p>
                       </div>
                       <span className="shrink-0 text-[0.55rem] text-white/40">{b.at}</span>
@@ -305,7 +317,7 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
 
             <button
               type="button"
-              onClick={() => world.toast(rightTab === "achievements" ? "All achievements coming soon!" : "Full battle log coming soon!")}
+              onClick={() => world.toast(rightTab === "achievements" ? "Achievements hall — coming in Version 1.3" : "Full battle log — coming in Version 1.3")}
               className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 font-display text-[0.72rem] font-extrabold text-white/70 transition hover:bg-white/10"
             >
               View All

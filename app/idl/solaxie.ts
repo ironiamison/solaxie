@@ -118,57 +118,9 @@ export type Solaxie = {
           }
         },
         {
-          "name": "playerTokenAccount",
-          "writable": true
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "vaultAuthority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104
-                ]
-              }
-            ]
-          }
-        },
-        {
           "name": "signer",
           "writable": true,
           "signer": true
-        },
-        {
-          "name": "tokenProgram",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
           "name": "systemProgram",
@@ -241,6 +193,10 @@ export type Solaxie = {
           }
         },
         {
+          "name": "tokenMint",
+          "writable": true
+        },
+        {
           "name": "parentA",
           "writable": true,
           "pda": {
@@ -308,24 +264,6 @@ export type Solaxie = {
         {
           "name": "playerTokenAccount",
           "writable": true
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
         },
         {
           "name": "signer",
@@ -424,7 +362,7 @@ export type Solaxie = {
     {
       "name": "initPlayer",
       "docs": [
-        "Create a player profile + token account and grant a starter stash from the vault."
+        "Create a player profile + token account (buy SOLAX on pump.fun to play)."
       ],
       "discriminator": [
         114,
@@ -480,46 +418,6 @@ export type Solaxie = {
         },
         {
           "name": "tokenMint"
-        },
-        {
-          "name": "vaultAuthority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
         },
         {
           "name": "playerTokenAccount",
@@ -784,7 +682,6 @@ export type Solaxie = {
         },
         {
           "name": "gameData",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -800,6 +697,10 @@ export type Solaxie = {
               }
             ]
           }
+        },
+        {
+          "name": "tokenMint",
+          "writable": true
         },
         {
           "name": "axol",
@@ -827,24 +728,6 @@ export type Solaxie = {
           "writable": true
         },
         {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
           "name": "signer",
           "writable": true,
           "signer": true
@@ -868,7 +751,7 @@ export type Solaxie = {
     {
       "name": "shopPurchase",
       "docs": [
-        "Pay for a shop item — tokens sink into the treasury vault."
+        "Pay for a shop item — tokens are burned."
       ],
       "discriminator": [
         185,
@@ -900,26 +783,12 @@ export type Solaxie = {
           }
         },
         {
-          "name": "playerTokenAccount",
+          "name": "tokenMint",
           "writable": true
         },
         {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
+          "name": "playerTokenAccount",
+          "writable": true
         },
         {
           "name": "signer",

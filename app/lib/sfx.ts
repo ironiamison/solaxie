@@ -238,6 +238,30 @@ export const sfx = {
     note(1320, 0.05, 0.1, { type: "square", gain: 0.11 });
   },
 
+  /** Reward chime for claiming the free DNA bonus. */
+  dnaBonus() {
+    note(523.25, 0, 0.12, { type: "triangle", gain: 0.14 });
+    note(659.25, 0.08, 0.14, { type: "triangle", gain: 0.16 });
+    note(783.99, 0.16, 0.2, { type: "sine", gain: 0.14 });
+    note(1046.5, 0.24, 0.35, { type: "triangle", gain: 0.12 });
+  },
+
+  /** Soft bubbly pop when feeding a Solaxy. */
+  feed() {
+    note(320, 0, 0.09, { type: "sine", gain: 0.11, slideTo: 480 });
+    note(520, 0.07, 0.11, { type: "triangle", gain: 0.1, slideTo: 720 });
+    note(740, 0.14, 0.16, { type: "sine", gain: 0.09 });
+  },
+
+  /** Rising surge when powering up stats. */
+  powerUp() {
+    note(220, 0, 0.2, { type: "sawtooth", gain: 0.09, slideTo: 660 });
+    note(330, 0.1, 0.22, { type: "triangle", gain: 0.12, slideTo: 880 });
+    note(523.25, 0.2, 0.3, { type: "triangle", gain: 0.14, slideTo: 1046.5 });
+    note(880, 0.32, 0.38, { type: "sine", gain: 0.1 });
+    noise(0.12, 0.1, 0.14, 2200);
+  },
+
   /** Soft "thump-thump" heartbeat — used when showing compatibility. */
   heartbeat() {
     note(120, 0, 0.16, { type: "sine", gain: 0.26, slideTo: 60 });

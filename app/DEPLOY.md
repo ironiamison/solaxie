@@ -1,68 +1,74 @@
-# Deploy Solaxie → solaxie.com
+# Solaxie deploy checklist
 
-## Vercel (recommended)
-
-### 1. Import project
-1. Push repo to GitHub
-2. [vercel.com/new](https://vercel.com/new) → import repo
-3. **Root Directory:** `app`
-4. **Environment variables** (Production):
-
-```
-NEXT_PUBLIC_SITE_URL=https://solaxie.com
-NEXT_PUBLIC_RPC=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
-NEXT_PUBLIC_PROGRAM_ID=<after anchor deploy>
-NEXT_PUBLIC_TOKEN_MINT=<your pump.fun mint>
-```
-
-5. Deploy
-
-### 2. DNS for solaxie.com
-
-In Vercel → Project → **Settings → Domains**, add:
-- `solaxie.com`
-- `www.solaxie.com` (auto-redirects to apex via vercel.json)
-
-At your domain registrar (GoDaddy, Cloudflare, Namecheap, etc.):
-
-**Option A — Vercel nameservers (easiest)**  
-Point the domain to Vercel’s nameservers; Vercel manages all records.
-
-**Option B — Keep your DNS host**
-
-| Type | Name | Value |
-|------|------|--------|
-| **A** | `@` | `76.76.21.21` |
-| **CNAME** | `www` | `cname.vercel-dns.com` |
-
-(Vercel may show slightly different values in the Domains UI — use those if they differ.)
-
-SSL is automatic. Wait 5–30 minutes for DNS propagation.
-
-### 3. On-chain (mainnet)
+## 1. Anchor program (mainnet)
 
 ```bash
-cd program && ./scripts/deploy.sh mainnet-beta
-cd ../app
-TOKEN_MINT=<mint> RPC=https://api.mainnet-beta.solana.com node scripts/deploy-init.js
-AMOUNT=1000000 node scripts/fund-vault.js
+cd program
+./scripts/deploy.sh mainnet-beta   # or devnet for testing
+anchor idl init -f target/idl/solaxie.json <PROGRAM_ID>
 ```
 
-Update `NEXT_PUBLIC_PROGRAM_ID` in Vercel → **Redeploy**.
+Copy `target/idl/solaxie.json` → `app/idl/solaxie.json` after any program change.
 
----
-
-## Verify launch
-
-- [ ] https://solaxie.com loads over HTTPS
-- [ ] https://www.solaxie.com redirects to https://solaxie.com
-- [ ] Phantom connects on the live domain
-- [ ] Shop purchases use mainnet RPC + your token mint
-
-## Local production test
+Initialize once (authority wallet):
 
 ```bash
 cd app
-cp .env.example .env.local   # fill values
-npm run build && npm start
+node scripts/setup.js          # initialize + fund vault
+node scripts/demo.js             # smoke test mint/breed/battle
 ```
+
+Fund the recycling vault with creator-reward SOLAX:
+
+```bash
+node scripts/fund-vault.js <amount_in_whole_tokens>
+```
+
+**Skip this** — economy is burn-only; vault stays empty and no SOLAX is paid out to players.
+
+## 2. Vercel env vars
+
+Set in **Project → Settings → Environment Variables** (root directory: `app`):
+
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `NEXT_PUBLIC_SITE_URL` | yes | `https://solaxie.com` |
+| `NEXT_PUBLIC_RPC` | yes | Helius/QuickNode mainnet URL |
+| `NEXT_PUBLIC_PROGRAM_ID` | yes | Must match deployed program |
+| `NEXT_PUBLIC_TOKEN_MINT` | yes | pump.fun SPL mint |
+| `BLOB_READ_WRITE_TOKEN` | yes | Leaderboard, feed, stats, **cloud saves** |
+
+Without Blob, data is in-memory per serverless instance (leaderboard and saves reset on cold start).
+
+## 3. Economy model (v1.2)
+
+**Burn-only — zero SOLAX distribution from the team.**
+
+- **Client burns:** feed, power-up, energy refill, Harbor shop, arena slots
+- **Program burns:** mint (100k), breed (150k × factor)
+- **No faucet** — trainers buy SOLAX on pump.fun; no starter grant
+- **Battles:** XP + DNA only — no SOLAX payouts ever
+- **Vault:** created at init but stays empty; you do not need to fund it
+
+Track total burned via Island Economy meter (`/api/stats` + on-chain burn txs).
+
+## 4. What runs on-chain vs Vercel
+
+| Data | Source |
+|------|--------|
+| Solaxies (Axols) | On-chain PDAs |
+| SOLAX balance | Wallet SPL ATA |
+| Energy | On-chain `PlayerData` |
+| Trainer profile, quests, pond layout | Vercel Blob (`/api/save`) |
+| Leaderboard / PvP discovery | Vercel Blob (`/api/players`) |
+| Live feed / economy meter | Vercel Blob + vault RPC read |
+
+## 5. Deploy
+
+```bash
+cd app
+npm run build
+git push   # Vercel auto-deploys if connected
+```
+
+After deploy: connect wallet on solaxie.com → confirm mint/breed/battle txs succeed and `/api/save` returns 201 in Network tab.

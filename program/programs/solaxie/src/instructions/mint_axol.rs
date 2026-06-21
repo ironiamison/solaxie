@@ -5,7 +5,7 @@ use crate::state::axol::Axol;
 use crate::state::game_data::GameData;
 use crate::state::player_data::PlayerData;
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount};
 
 /// Roll a brand new origin (generation 0) Axol with randomized genes. Costs tokens, which
 /// are sent into the treasury vault. `axol_id` must equal the registry's current `total_axols`.
@@ -22,17 +22,13 @@ pub fn mint_axol(ctx: Context<MintAxol>, axol_id: u64) -> Result<()> {
         GameErrorCode::TooManyAxols
     );
 
-    // Sink: pay the mint cost into the treasury vault.
-    require!(
-        ctx.accounts.player_token_account.amount >= MINT_AXOL_COST,
-        GameErrorCode::NotEnoughTokens
-    );
-    token::transfer(
+    // Sink: burn the mint cost (removed from circulating supply).
+    token::burn(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
-            Transfer {
+            Burn {
+                mint: ctx.accounts.token_mint.to_account_info(),
                 from: ctx.accounts.player_token_account.to_account_info(),
-                to: ctx.accounts.vault.to_account_info(),
                 authority: ctx.accounts.signer.to_account_info(),
             },
         ),
@@ -76,12 +72,11 @@ pub struct MintAxol<'info> {
     )]
     pub player: Account<'info, PlayerData>,
 
-    #[account(
-        mut,
-        seeds = [b"config".as_ref()],
-        bump,
-    )]
+    #[account(seeds = [b"config".as_ref()], bump)]
     pub game_data: Account<'info, GameData>,
+
+    #[account(mut, address = game_data.token_mint)]
+    pub token_mint: Account<'info, Mint>,
 
     #[account(
         init,
@@ -98,9 +93,6 @@ pub struct MintAxol<'info> {
         constraint = player_token_account.owner == signer.key() @ GameErrorCode::WrongAuthority,
     )]
     pub player_token_account: Account<'info, TokenAccount>,
-
-    #[account(mut, seeds = [b"vault".as_ref()], bump)]
-    pub vault: Account<'info, TokenAccount>,
 
     #[account(mut)]
     pub signer: Signer<'info>,

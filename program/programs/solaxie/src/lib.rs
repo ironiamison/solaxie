@@ -38,7 +38,7 @@ pub mod solaxie {
         fund_treasury::fund_treasury(ctx, amount)
     }
 
-    /// Create a player profile + token account and grant a starter stash from the vault.
+    /// Create a player profile + token account (buy SOLAX on pump.fun to play).
     pub fn init_player(ctx: Context<InitPlayer>, name: String) -> Result<()> {
         init_player::init_player(ctx, name)
     }
@@ -58,7 +58,7 @@ pub mod solaxie {
         battle::battle(ctx, counter)
     }
 
-    /// Pay for a shop item — tokens sink into the treasury vault.
+    /// Pay for a shop item — tokens are burned.
     pub fn shop_purchase(ctx: Context<ShopPurchase>, amount: u64, sku: u32) -> Result<()> {
         shop_purchase::shop_purchase(ctx, amount, sku)
     }

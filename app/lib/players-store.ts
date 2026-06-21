@@ -76,7 +76,7 @@ export async function pickOpponent(excludeWallet: string, trophies: number): Pro
     if (p.wallet === excludeWallet) return false;
     if (!p.axols.length) return false;
     if (!p.name.trim()) return false;
-    return Math.abs(p.trophies - trophies) <= 400 || p.trophies >= 100;
+    return Math.abs(p.trophies - trophies) <= 400 || p.trophies >= 1;
   });
   const pool = candidates.length ? candidates : all.filter((p) => p.wallet !== excludeWallet && p.axols.length);
   if (!pool.length) return null;

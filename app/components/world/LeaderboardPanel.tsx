@@ -99,7 +99,7 @@ export function LeaderboardPanel({
 
       {tab === "friends" ? (
         <div className="rounded-xl border border-dashed border-white/15 bg-black/20 px-4 py-8 text-center">
-          <p className="font-display text-sm font-extrabold text-white/70">Friends list coming soon</p>
+          <p className="font-display text-sm font-extrabold text-white/70">Friends list — Version 1.3</p>
           <p className="mt-1 text-[0.66rem] text-white/45">Use Global to find trainers to battle</p>
         </div>
       ) : (

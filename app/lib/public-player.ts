@@ -11,6 +11,8 @@ export type PublicPlayer = {
   league: string;
   trophies: number;
   rank: number;
+  /** Season participation score — all island activity. */
+  activityTickets: number;
   wins: number;
   axols: Axol[];
   activeId: number | null;
@@ -41,6 +43,11 @@ export function avatarForPlayer(p: Pick<PublicPlayer, "avatarId">): string {
     aquatic: "/pfp-aquatic.png",
     beast: "/pfp-beast.png",
     reptile: "/pfp-reptile.png",
+    crystal: "/sprites/crystal.png",
+    shadow: "/sprites/shadow.png",
+    mech: "/sprites/mech.png",
+    ember: "/sprites/ember.png",
+    void: "/sprites/void.png",
   };
   return map[p.avatarId] ?? "/avatar-axolotl.png";
 }
@@ -86,6 +93,7 @@ export function toPublicPlayer(payload: PlayerSyncPayload): PublicPlayer {
     league: p.league,
     trophies: p.trophies,
     rank: p.rank,
+    activityTickets: p.activityTickets ?? 0,
     wins: payload.quests.wins,
     axols: payload.axols.slice(0, 40),
     activeId: payload.activeId,

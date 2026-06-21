@@ -13,6 +13,7 @@ import {
 } from "@/lib/game";
 import { sfx } from "@/lib/sfx";
 import { fetchBattleOpponent, opponentFromPlayer } from "@/lib/global-players";
+import { leagueFromTrophies, nextLeagueFromTrophies, leagueTierProgress } from "@/lib/profile";
 import type { WorldApi } from "../world";
 import { Panel, ScreenShell, ScreenTop, SectionTitle } from "../ScreenChrome";
 
@@ -20,11 +21,9 @@ type Phase = "lobby" | "searching" | "matched" | "commencing" | "replay" | "resu
 
 const ENERGY_COST = 10;
 
-// Team capacity: 5 free slots, then SOLAX-gated expansion slots. Paying for a
-// slot spends (burns) the SOLAX — it leaves the player's balance for good,
-// matching the on-chain token burn model.
-const FREE_SLOTS = 5;
-const SLOT_PRICES = [20000, 55000]; // cost to unlock slot 6, then slot 7
+// Team capacity: 3 free starter slots, then SOLAX-gated expansion slots.
+const FREE_SLOTS = 3;
+const SLOT_PRICES = [20000, 55000]; // cost to unlock slot 4, then slot 5
 const MAX_TEAM = FREE_SLOTS + SLOT_PRICES.length;
 
 const ITEMS = [
@@ -44,19 +43,15 @@ const BATTLE_COLOR: Record<AxolClass, string> = {
   aquatic: "#3db4ff",
   beast: "#ffa83d",
   reptile: "#ffd24a",
+  crystal: "#7ecbff",
+  shadow: "#7a5cff",
+  mech: "#5ce0ff",
+  ember: "#ff6b3d",
+  void: "#b06bff",
 };
 
 const OPP_NAMES = ["AxolMaster", "CoralKing", "NeonFin", "VoidSerpent", "PixelPaws", "LunarGill", "ApexBeast", "SporeLord", "TidalQueen", "EmberFang", "GlitchToad", "MysticGill"];
 const OPP_TITLES = ["Tide Runner", "Cave Champion", "Gene Hunter", "Storm Caller", "Relic Seeker", "Apex Trainer"];
-
-function rankName(t: number): string {
-  if (t < 900) return "Bronze IV";
-  if (t < 1100) return "Bronze III";
-  if (t < 1300) return "Bronze II";
-  if (t < 1500) return "Bronze I";
-  if (t < 1800) return "Silver III";
-  return "Silver II";
-}
 
 type Opponent = {
   name: string;
@@ -87,8 +82,8 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
   const [mineHp, setMineHp] = useState(0);
   const [enemyHp, setEnemyHp] = useState(0);
   const [items, setItems] = useState<string[]>([]);
-  const [trophies, setTrophies] = useState(1254);
-  const [streak, setStreak] = useState(3);
+  const trophies = world.profile.trophies;
+  const [streak, setStreak] = useState(0);
   const [floatKey, setFloatKey] = useState(0);
   const [bigShake, setBigShake] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -147,13 +142,13 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
       opp = opponentFromPlayer(match.player);
       world.toast(`Matched vs ${match.player.name} — real trainer!`);
     } else {
-      const et = Math.max(820, trophies + (Math.floor(Math.random() * 130) - 60));
+      const et = Math.max(20, trophies + (Math.floor(Math.random() * 80) - 40));
       const oppName = OPP_NAMES[Math.floor(Math.random() * OPP_NAMES.length)];
       opp = {
         name: oppName,
         title: "Practice wild — no live trainers matched",
         trophies: et,
-        rank: rankName(et),
+        rank: leagueFromTrophies(et),
         winRate: 46 + Math.floor(Math.random() * 28),
         team: [out.enemy, wildAxol(out.mine), wildAxol(out.mine)],
         isReal: false,
@@ -201,13 +196,11 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
     await delay(300);
     out.result.win ? sfx.win() : sfx.lose();
     setStreak((s) => (out.result.win ? s + 1 : 0));
-    setTrophies((t) => Math.max(0, t + (out.result.win ? 8 : -6)));
     world.recordBattle({
       opponent: opp.name,
       win: out.result.win,
       axolName: out.mine.name,
       axolCls: out.mine.cls,
-      rewardSolax: out.result.rewardSolax,
       rewardXp: out.result.rewardXp,
       trophiesDelta: out.result.win ? 8 : -6,
       at: "just now",
@@ -242,7 +235,7 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
       <ScreenTop
         world={world}
         title="ARENA CAVE"
-        subtitle="Climb the ladder, earn glory!"
+        subtitle="Win battles, earn activity tickets!"
         icon="/icon-arena.png"
         center={<RankPill trophies={trophies} />}
       />
@@ -629,6 +622,11 @@ const FX_COLOR: Record<AxolClass, string> = {
   beast: "#ffa83d",
   aquatic: "#3db4ff",
   reptile: "#ffd24a",
+  crystal: "#7ecbff",
+  shadow: "#7a5cff",
+  mech: "#5ce0ff",
+  ember: "#ff6b3d",
+  void: "#b06bff",
 };
 
 // High-juice per-class attack effects. The attacker side drives the travel
@@ -953,7 +951,7 @@ function VersusOverlay({
         )}
         <div className="mt-3 flex w-full items-stretch justify-center gap-2 sm:gap-3">
           <div className="flex-1 animate-slideinl">
-            <ProfileCard name={myName} title="That's you" rank={rankName(myTrophies)} trophies={myTrophies} team={myTeam} side="left" you />
+            <ProfileCard name={myName} title="That's you" rank={leagueFromTrophies(myTrophies)} trophies={myTrophies} team={myTeam} side="left" you />
           </div>
           <div className="flex items-center">
             <span className="animate-starpop font-display text-4xl font-black text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.9)] sm:text-6xl">VS</span>
@@ -1073,12 +1071,9 @@ function ResultOverlay({ result, items, trophies, onAgain, onLobby }: { result: 
 
         <div className="mt-4 flex items-center gap-2.5">
           <div className="animate-riseup" style={{ animationDelay: "0.15s", opacity: 0, animationFillMode: "forwards" }}>
-            <RewardChip img="/icons/coin.png" label="SOLAX" value={`+${result.rewardSolax}`} />
-          </div>
-          <div className="animate-riseup" style={{ animationDelay: "0.3s", opacity: 0, animationFillMode: "forwards" }}>
             <RewardChip img="/icons/dna.png" label="DNA" value={win ? "+5" : "+0"} />
           </div>
-          <div className="animate-riseup" style={{ animationDelay: "0.45s", opacity: 0, animationFillMode: "forwards" }}>
+          <div className="animate-riseup" style={{ animationDelay: "0.3s", opacity: 0, animationFillMode: "forwards" }}>
             <RewardChip star label="XP" value={`+${result.rewardXp}`} />
           </div>
         </div>
@@ -1105,23 +1100,22 @@ function ResultOverlay({ result, items, trophies, onAgain, onLobby }: { result: 
   );
 }
 
-const TIER_TROPHIES = 300;
-
 function LeagueProgress({ trophies, delta }: { trophies: number; delta: number }) {
   const before = Math.max(0, trophies - delta);
-  const beforePct = ((before % TIER_TROPHIES) / TIER_TROPHIES) * 100;
-  const afterPct = ((trophies % TIER_TROPHIES) / TIER_TROPHIES) * 100;
-  const [pct, setPct] = useState(beforePct);
+  const beforeTier = leagueTierProgress(before);
+  const afterTier = leagueTierProgress(trophies);
+  const [pct, setPct] = useState(beforeTier.pct);
   useEffect(() => {
-    const t = setTimeout(() => setPct(afterPct), 350);
+    const t = setTimeout(() => setPct(afterTier.pct), 350);
     return () => clearTimeout(t);
-  }, [afterPct]);
+  }, [afterTier.pct]);
+  const league = leagueFromTrophies(trophies);
   return (
     <div className="mt-4 w-full rounded-2xl border border-white/12 bg-ink-900/70 p-3 backdrop-blur">
       <div className="mb-1.5 flex items-center justify-between">
         <span className="flex items-center gap-1.5 font-display text-[0.72rem] font-extrabold text-amber-200">
           <img src="/rank-bronze.png" alt="" className="h-5 w-5 object-contain" />
-          Bronze III
+          {league}
         </span>
         <span className={`font-display text-[0.72rem] font-extrabold ${delta >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
           {delta >= 0 ? "+" : ""}
@@ -1177,11 +1171,12 @@ function FindButton({ onClick, energy }: { onClick: () => void; energy: number }
 }
 
 function RankPill({ trophies }: { trophies: number }) {
+  const league = leagueFromTrophies(trophies);
   return (
     <div className="flex items-center gap-2 rounded-full border border-amber-400/30 bg-ink-900/70 px-3 py-1.5 backdrop-blur">
       <img src="/rank-bronze.png" alt="" className="h-7 w-7 object-contain" />
       <div className="leading-tight">
-        <div className="font-display text-[0.72rem] font-extrabold text-amber-200">BRONZE III</div>
+        <div className="font-display text-[0.72rem] font-extrabold text-amber-200">{league.toUpperCase()}</div>
         <div className="text-[0.58rem] font-bold text-white/60">{trophies.toLocaleString()} trophies</div>
       </div>
     </div>
@@ -1190,13 +1185,16 @@ function RankPill({ trophies }: { trophies: number }) {
 
 function RankLadder({ trophies, streak }: { trophies: number; streak: number }) {
   const filled = Math.min(10, 4 + streak);
+  const league = leagueFromTrophies(trophies);
+  const next = nextLeagueFromTrophies(trophies);
+  const tier = leagueTierProgress(trophies);
   return (
     <Panel className="h-full p-4">
       <SectionTitle accent="#ffd24a">League</SectionTitle>
       <div className="mt-2 flex items-center gap-3">
         <img src="/rank-bronze.png" alt="" className="h-14 w-14 object-contain drop-shadow" />
         <div>
-          <div className="font-display text-lg font-extrabold text-amber-200">Bronze III</div>
+          <div className="font-display text-lg font-extrabold text-amber-200">{league}</div>
           <div className="flex items-center gap-1 text-[0.66rem] font-bold text-white/70">
             <img src="/icons/coin.png" alt="" className="hidden h-3 w-3" />
             {trophies.toLocaleString()} trophies
@@ -1212,13 +1210,13 @@ function RankLadder({ trophies, streak }: { trophies: number; streak: number }) 
       </div>
       <div className="mt-2">
         <div className="mb-1 flex items-center justify-between text-[0.55rem] font-bold text-white/45">
-          <span>Bronze III</span>
-          <span>Bronze II</span>
+          <span>{league}</span>
+          <span>{next ?? "Max rank"}</span>
         </div>
         <div className="h-2.5 w-full overflow-hidden rounded-full border border-white/15 bg-black/50">
-          <div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-200" style={{ width: `${((trophies % TIER_TROPHIES) / TIER_TROPHIES) * 100}%` }} />
+          <div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-200" style={{ width: `${tier.pct}%` }} />
         </div>
-        <div className="mt-1 text-right text-[0.55rem] text-white/45">{TIER_TROPHIES - (trophies % TIER_TROPHIES)} to promote</div>
+        <div className="mt-1 text-right text-[0.55rem] text-white/45">{next ? `${tier.toNext} to promote` : "Top tier"}</div>
       </div>
       <div className="mt-3 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/30 p-2">
         <img src="/egg-cosmic.png" alt="" className="h-9 w-9 object-contain" />
@@ -1271,9 +1269,8 @@ function WinRewards() {
     <Panel className="h-full p-4">
       <SectionTitle accent="#ffd24a">Win Rewards</SectionTitle>
       <div className="mt-3 space-y-2">
-        <RewardRow img="/icons/coin.png" color="#ffd24a" label="+25 SOLAX" />
         <RewardRow img="/icons/dna.png" color="#d68bff" label="+5 DNA" />
-        <RewardRow star color="#ffd24a" label="+15 XP" />
+        <RewardRow star color="#ffd24a" label="+40 XP" />
       </div>
       <div className="mt-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-center text-[0.62rem] font-bold text-emerald-200">
         Win 3 in a row for a bonus chest!

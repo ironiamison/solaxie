@@ -9,12 +9,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === "GET") {
     const [stored, vaultSolax] = await Promise.all([getEconomyStats(), fetchVaultSolax()]);
+    const offChain = Math.max(stored.offChainSpent, stored.offChainBurned);
+    const totalSunk = offChain + vaultSolax;
     const body: EconomyTotals = {
       offChainSpent: stored.offChainSpent,
       offChainBurned: stored.offChainBurned,
       vaultSolax,
-      totalSpent: stored.offChainSpent + vaultSolax,
-      totalBurned: stored.offChainBurned + vaultSolax,
+      totalSunk,
+      totalSpent: totalSunk,
+      totalBurned: totalSunk,
       programId: PROGRAM_ID.toBase58(),
       tokenMint: TOKEN_MINT.toBase58(),
       updatedAt: Math.max(stored.updatedAt, Date.now()),

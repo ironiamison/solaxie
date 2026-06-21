@@ -1,10 +1,12 @@
 import type { Axol, BattleResult, FeedItem, Resources } from "@/lib/game";
 import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile";
 import type { PublicPlayer } from "@/lib/public-player";
+import type { PondLayout, PondSpotPct } from "@/lib/pond-layout";
+import type { PondLayouts } from "@/lib/pond-layouts";
 
 export type Screen = "home" | "collection" | "battle" | "market" | "dnacore" | "empire";
 
-export type Quests = { rolls: number; breeds: number; wins: number };
+export type Quests = { rolls: number; breeds: number; wins: number; claimedDay?: string };
 
 /** Shared game state + actions handed to every screen by the page. */
 export type WorldApi = {
@@ -51,12 +53,28 @@ export type WorldApi = {
   /** Spend SOLAX or SPL (when itemId set). Returns false if too poor or tx fails. */
   purchase: (price: number, reward?: Partial<Resources>, label?: string, itemId?: string) => Promise<boolean>;
   addAxol: (a: Axol) => void;
-  feedAxol: (id: number) => boolean;
-  powerUp: (id: number) => boolean;
-  /** Buy `blocks` × 10 energy at 100k SOLAX each. Returns false if too poor. */
-  buyEnergy: (blocks: number) => boolean;
+  /** Permanently remove a Solaxy from your collection. Returns false if blocked. */
+  releaseAxol: (id: number) => boolean;
+  feedAxol: (id: number) => Promise<boolean>;
+  powerUp: (id: number) => Promise<boolean>;
+  /** Buy `blocks` × 10 energy at 100k SOLAX each (burned). Returns false if too poor. */
+  buyEnergy: (blocks: number) => Promise<boolean>;
   setActive: (id: number) => void;
   toast: (msg: string) => void;
-  /** Track global spend/burn totals (off-chain; on-chain shop uses vault balance). */
-  recordEconomy: (spent: number, burned?: number) => void;
+  /** Track global SOLAX sunk (spent = burned for every in-game sink). */
+  recordEconomy: (amount: number) => void;
+  /** Unix ms — last free DNA bonus claim (undefined = never claimed). */
+  lastDnaBonusAt?: number;
+  /** Claim +5 DNA if the 4-hour cooldown has elapsed. */
+  claimDnaBonus: () => boolean;
+  /** Drag-to-arrange pond positions (separate for home island vs collection preview). */
+  pondLayouts: PondLayouts;
+  pondArranging: boolean;
+  pondArrangeView: "home" | "collection" | null;
+  openPondArrange: (view: "home" | "collection") => void;
+  closePondArrange: () => void;
+  setPondSpot: (axolId: number, spot: PondSpotPct) => void;
+  /** True when the Anchor program is deployed — core loop uses on-chain txs. */
+  chainReady: boolean;
+  resetPondLayout: () => void;
 };

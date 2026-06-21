@@ -28,7 +28,7 @@ const vaultPDA = pda([Buffer.from("vault")]);
   const secretPath = process.env.SOLANA_KEYPAIR ?? path.join(os.homedir(), ".config/solana/id.json");
   const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(secretPath))));
   const provider = new anchor.AnchorProvider(connection, new anchor.Wallet(kp), { commitment: "confirmed" });
-  const program = new anchor.Program(idl, PROGRAM_ID, provider);
+  const program = new anchor.Program(idl, provider);
   const funderAta = getAssociatedTokenAddressSync(MINT, kp.publicKey);
   const baseUnits = new anchor.BN((AMOUNT * BigInt(ONE)).toString());
 

@@ -4,16 +4,15 @@ pub const MAX_ENERGY: u64 = 100;
 pub const BATTLE_ENERGY_COST: u64 = 5;
 pub const BREED_ENERGY_COST: u64 = 10;
 
-// ----- Economy (single SPL token, fixed-supply + recycling treasury model) -----
+// ----- Economy (single SPL token — burn-only, no team payouts) -----
 // All amounts are in token base units. The mock/dev token uses 6 decimals, so
-// ONE_TOKEN = 1_000_000 base units. Costs flow INTO the vault (sinks); rewards and the
-// starter grant flow OUT of the vault, so the pool self-sustains.
+// ONE_TOKEN = 1_000_000 base units. All costs burn from the player's wallet.
 pub const ONE_TOKEN: u64 = 1_000_000;
-pub const STARTER_GRANT: u64 = 500 * ONE_TOKEN; // from vault to each new trainer
-pub const MINT_AXOL_COST: u64 = 100 * ONE_TOKEN; // sink -> vault
-pub const BREED_BASE_COST: u64 = 150 * ONE_TOKEN; // sink -> vault (scales with breed count)
-pub const BATTLE_WIN_REWARD: u64 = 25 * ONE_TOKEN; // reward <- vault
-pub const BATTLE_LOSS_REWARD: u64 = 5 * ONE_TOKEN; // consolation <- vault
+pub const STARTER_GRANT: u64 = 0; // trainers buy SOLAX on pump.fun
+pub const MINT_AXOL_COST: u64 = 100 * ONE_TOKEN; // burned on mint
+pub const BREED_BASE_COST: u64 = 150 * ONE_TOKEN; // burned on breed (scales with breed count)
+pub const BATTLE_WIN_REWARD: u64 = 0;
+pub const BATTLE_LOSS_REWARD: u64 = 0;
 
 // ----- Shop -----
 /// Upper bound for a single shop purchase (500k whole tokens at 6 decimals).

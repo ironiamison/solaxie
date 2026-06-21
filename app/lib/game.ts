@@ -10,14 +10,32 @@
 //   - battle score with a 15% class-advantage bonus
 // ---------------------------------------------------------------------------
 
-export type AxolClass = "beast" | "plant" | "aquatic" | "bird" | "bug" | "reptile";
+export type AxolClass =
+  | "beast"
+  | "plant"
+  | "aquatic"
+  | "bird"
+  | "bug"
+  | "reptile"
+  | "crystal"
+  | "shadow"
+  | "mech"
+  | "ember"
+  | "void";
 
-export const CLASSES: AxolClass[] = ["beast", "plant", "aquatic", "bird", "bug", "reptile"];
+export const CLASSES: AxolClass[] = [
+  "beast", "plant", "aquatic", "bird", "bug", "reptile",
+  "crystal", "shadow", "mech", "ember", "void",
+];
 
-// Class advantage — two separate triangles.
+/** New Primal elements — full illustrated evolution line (no filter breed strains yet). */
+export const PRIMAL_CLASSES: AxolClass[] = ["crystal", "shadow", "mech", "ember", "void"];
+
+// Class advantage — three triangles.
 //   Triangle 1: Beast > Plant > Aquatic > Beast
 //   Triangle 2: Bird  > Bug   > Reptile > Bird
-// `beats` is the single class each class has advantage over.
+//   Triangle 3: Crystal > Mech > Ember > Crystal
+//   Shadow > Void, Void > Crystal
 const BEATS: Record<AxolClass, AxolClass> = {
   beast: "plant",
   plant: "aquatic",
@@ -25,6 +43,11 @@ const BEATS: Record<AxolClass, AxolClass> = {
   bird: "bug",
   bug: "reptile",
   reptile: "bird",
+  crystal: "mech",
+  mech: "ember",
+  ember: "crystal",
+  shadow: "void",
+  void: "crystal",
 };
 
 export const CLASS_META: Record<
@@ -37,6 +60,11 @@ export const CLASS_META: Record<
   bird: { name: "Bird", color: "#ff5fb0", sprite: "/sprites/bird.png", beats: BEATS.bird, identity: "High speed / crit assassin" },
   bug: { name: "Bug", color: "#a779ff", sprite: "/sprites/bug.png", beats: BEATS.bug, identity: "Debuff / trickster" },
   reptile: { name: "Reptile", color: "#2fe0cf", sprite: "/sprites/reptile.png", beats: BEATS.reptile, identity: "Defense / counterattack defender" },
+  crystal: { name: "Crystal", color: "#7ecbff", sprite: "/sprites/crystal.png", beats: BEATS.crystal, identity: "Armored glass cannon" },
+  shadow: { name: "Shadow", color: "#7a5cff", sprite: "/sprites/shadow.png", beats: BEATS.shadow, identity: "Stealth / debuff striker" },
+  mech: { name: "Mech", color: "#5ce0ff", sprite: "/sprites/mech.png", beats: BEATS.mech, identity: "Precision tech fighter" },
+  ember: { name: "Ember", color: "#ff6b3d", sprite: "/sprites/ember.png", beats: BEATS.ember, identity: "Burst damage pyro" },
+  void: { name: "Void", color: "#b06bff", sprite: "/sprites/void.png", beats: BEATS.void, identity: "Cosmic finisher" },
 };
 
 export type Advantage = "advantage" | "disadvantage" | "neutral";
@@ -92,6 +120,11 @@ const CLASS_BONUS: Record<AxolClass, Partial<Stats>> = {
   bird: { speed: 24, skill: 16 },
   bug: { skill: 22, morale: 22 },
   reptile: { defense: 28, hp: 22 },
+  crystal: { defense: 18, skill: 18 },
+  shadow: { skill: 26, speed: 14 },
+  mech: { attack: 16, skill: 20 },
+  ember: { attack: 26, morale: 12 },
+  void: { skill: 24, attack: 14 },
 };
 
 /** Generate stats from class + rarity (rarity multiplies everything). */
@@ -115,7 +148,7 @@ export function generateStats(cls: AxolClass, rarity: Rarity): Stats {
 
 export type Genes = { eyes: string; ears: string; mouth: string; horn: string; back: string; tail: string };
 
-const GENE_POOL: Record<keyof Genes, string[]> = {
+export const GENE_POOL: Record<keyof Genes, string[]> = {
   eyes: ["Round", "Sleepy", "Sharp", "Starry", "Wide"],
   ears: ["Perky", "Floppy", "Tufted", "Frilled", "Tiny"],
   mouth: ["Smile", "Fang", "Beak", "Pout", "Grin"],
@@ -181,11 +214,21 @@ export type Resources = {
 };
 
 export const COSTS = {
-  roll: { solax: 0, dna: 1, energy: 10 },
-  breed: { solax: 1200, eggs: 1 },
+  roll: { solax: 100_000, dna: 0, energy: 0 },
+  breed: { solax: 150_000, eggs: 0 },
   battle: { energy: 5 },
 };
 
+/** On-chain program costs (6-decimal SPL base units → whole tokens). */
+export const ON_CHAIN_COSTS = {
+  mintAxol: 100_000,
+  breedBase: 150_000,
+  battleEnergy: 5,
+  breedEnergy: 10,
+  starterGrant: 0,
+};
+
+// Energy refill pricing: 100k SOLAX per 10 energy → 1,000,000 for a full 100 bar.
 // Energy refill pricing: 100k SOLAX per 10 energy → 1,000,000 for a full 100 bar.
 export const ENERGY_REFILL = { perBlock: 10, solaxPerBlock: 100_000 };
 
@@ -194,8 +237,26 @@ export function energyRefillCost(energy: number): number {
   return Math.ceil(energy / ENERGY_REFILL.perBlock) * ENERGY_REFILL.solaxPerBlock;
 }
 
+/** Free DNA claim in the DNA Core sidebar. */
+export const DNA_BONUS = { amount: 5, cooldownMs: 4 * 60 * 60 * 1000 };
+
+export function dnaBonusRemaining(lastClaimAt: number | undefined, now = Date.now()): number {
+  if (!lastClaimAt) return 0;
+  return Math.max(0, DNA_BONUS.cooldownMs - (now - lastClaimAt));
+}
+
+export function formatCooldown(ms: number): string {
+  if (ms <= 0) return "";
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  const s = Math.floor((ms % 60_000) / 1000);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 export const STARTING_RESOURCES: Resources = {
-  solax: 300000,
+  solax: 0,
   dna: 34,
   eggs: 3,
   energy: 100,
@@ -204,7 +265,7 @@ export const STARTING_RESOURCES: Resources = {
 };
 
 const STATUSES = ["Sleeping", "Playing", "Fishing", "Splashing", "Napping", "Exploring"];
-const NAME_PREFIX = ["Blaze", "Coral", "Sprout", "Pip", "Zappy", "Mossy", "Bubbles", "Echo", "Nimbus", "Fern", "Spark", "Pebble", "Dewey", "Tonka", "Yuzu"];
+export const NAME_PREFIX = ["Blaze", "Coral", "Sprout", "Pip", "Zappy", "Mossy", "Bubbles", "Echo", "Nimbus", "Fern", "Spark", "Pebble", "Dewey", "Tonka", "Yuzu"];
 
 let idCounter = 1;
 export function nextId() {
@@ -251,7 +312,7 @@ export function generateRandomAxol(opts: Partial<Axol> = {}): Axol {
       (rarity === "Cosmic"
         ? `cosmic-${cls}`
         : rarity === "Legendary" || rarity === "Epic"
-        ? pick([...BREED_COSMETICS])
+        ? pickBreedCosmetic(cls, rarity)
         : undefined),
   };
 }
@@ -374,7 +435,6 @@ export type BattleResult = {
   myRoll: number;
   enemyRoll: number;
   advantage: "you" | "enemy" | "none";
-  rewardSolax: number;
   rewardXp: number;
 };
 
@@ -393,7 +453,6 @@ export function resolveBattle(mine: Axol, enemy: Axol): BattleResult {
     myRoll,
     enemyRoll,
     advantage,
-    rewardSolax: win ? 25 : 5,
     rewardXp: win ? 40 : 15,
   };
 }
@@ -590,6 +649,11 @@ export const ELEMENT_ICON: Record<AxolClass, string> = {
   bird: CLASS_META.bird.sprite,
   bug: CLASS_META.bug.sprite,
   reptile: CLASS_META.reptile.sprite,
+  crystal: CLASS_META.crystal.sprite,
+  shadow: CLASS_META.shadow.sprite,
+  mech: CLASS_META.mech.sprite,
+  ember: CLASS_META.ember.sprite,
+  void: CLASS_META.void.sprite,
 };
 
 /** Full-body sprite for an Axol — respects breed cosmetics & per-class cosmic art. */
@@ -600,17 +664,46 @@ export const BREED_COSMETICS = [
 
 export type BreedCosmeticId = (typeof BREED_COSMETICS)[number];
 
+/** Five discoverable breed strains per element in the SolaxyDex (60 forms total). */
+export const DEX_STRAINS_PER_CLASS = 5;
+
+/** Rotate breed sprites across elements so all 10 cosmetics appear in the dex. */
+export function strainCosmeticId(cls: AxolClass, strainIndex: number): BreedCosmeticId {
+  const ci = CLASSES.indexOf(cls);
+  return BREED_COSMETICS[(ci * DEX_STRAINS_PER_CLASS + strainIndex) % BREED_COSMETICS.length];
+}
+
+export function isDexStrainCosmetic(cls: AxolClass, cosmeticId: string): boolean {
+  for (let i = 0; i < DEX_STRAINS_PER_CLASS; i++) {
+    if (strainCosmeticId(cls, i) === cosmeticId) return true;
+  }
+  return false;
+}
+
 function pickBreedCosmetic(cls: AxolClass, rarity: Rarity): string {
   if (rarity === "Cosmic") return `cosmic-${cls}`;
-  return pick([...BREED_COSMETICS]);
+  const strainIndex = Math.floor(Math.random() * DEX_STRAINS_PER_CLASS);
+  return strainCosmeticId(cls, strainIndex);
+}
+
+/** Resolve the SolaxyDex entry id for an owned Axol (matches generated sprite filenames). */
+export function axolDexId(a: Axol): string {
+  const cls = a.cls;
+  const stars = RARITY_META[a.rarity].stars;
+  if (a.cosmeticId && isDexStrainCosmetic(cls, a.cosmeticId)) {
+    return `${cls}-${a.cosmeticId}`;
+  }
+  if (a.rarity === "Cosmic" || a.cosmeticId === `cosmic-${cls}`) {
+    return `cosmic-${cls}`;
+  }
+  if (stars >= 4) return `legendary-${cls}`;
+  if (stars >= 3) return `epic-${cls}`;
+  if (stars >= 2) return `rare-${cls}`;
+  return `base-${cls}`;
 }
 
 export function axolSprite(a: Axol): string {
-  if (a.cosmeticId) {
-    return `/sprites/cosmetics/${a.cosmeticId}.png`;
-  }
-  if (a.rarity === "Cosmic") return `/sprites/cosmetics/cosmic-${a.cls}.png`;
-  return CLASS_META[a.cls].sprite;
+  return `/sprites/dex/${axolDexId(a)}.png`;
 }
 
 /** Backfill cosmeticId for axols bred before the cosmetics system existed. */
@@ -618,8 +711,8 @@ export function withCosmetic(a: Axol): Axol {
   if (a.cosmeticId) return a;
   if (a.rarity === "Cosmic") return { ...a, cosmeticId: `cosmic-${a.cls}` };
   if (a.parents?.length) {
-    const pick = BREED_COSMETICS[a.id % BREED_COSMETICS.length];
-    return { ...a, cosmeticId: pick };
+    const strainIndex = a.id % DEX_STRAINS_PER_CLASS;
+    return { ...a, cosmeticId: strainCosmeticId(a.cls, strainIndex) };
   }
   return a;
 }
@@ -665,6 +758,11 @@ const ABILITY_POOL: Record<AxolClass, string[]> = {
   bird: ["Gust Dive", "Feather Dance", "Sky Call"],
   bug: ["Venom Sting", "Swarm", "Hard Shell"],
   reptile: ["Tail Whip", "Scale Guard", "Sun Bask"],
+  crystal: ["Shard Burst", "Prism Guard", "Ice Pulse"],
+  shadow: ["Night Slash", "Void Cloak", "Dread Gaze"],
+  mech: ["Pulse Beam", "Overclock", "Hard Reset"],
+  ember: ["Flame Rush", "Magma Shell", "Ash Cloud"],
+  void: ["Starfall", "Rift Tear", "Gravity Well"],
 };
 
 /** Three deterministic abilities for an Axol, leveled by its rarity/level. */
@@ -674,23 +772,4 @@ export function abilities(a: Axol): Ability[] {
   return ABILITY_POOL[a.cls].map((name, i) => ({ name, icon: icons[i], level: Math.max(1, top - i) }));
 }
 
-// ---- Stubbed chain layer --------------------------------------------------
-// Replace each body with the real Anchor instruction when wiring on-chain.
-
-export const chain = {
-  async roll(): Promise<{ sig: string }> {
-    await fakeLatency();
-    return { sig: fakeSig() };
-  },
-  async breed(_a: number, _b: number): Promise<{ sig: string }> {
-    await fakeLatency();
-    return { sig: fakeSig() };
-  },
-  async battle(_my: number, _enemy: number): Promise<{ sig: string }> {
-    await fakeLatency();
-    return { sig: fakeSig() };
-  },
-};
-
-const fakeLatency = () => new Promise((r) => setTimeout(r, 450 + Math.random() * 350));
-const fakeSig = () => Array.from({ length: 8 }, () => Math.random().toString(36).slice(2, 6)).join("");
+// ---- Chain layer lives in `lib/chain.ts` (Anchor client) -------------------

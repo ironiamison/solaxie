@@ -37,7 +37,7 @@ const vaultAuthPDA = pda([Buffer.from("vault_auth")]);
   const secret = JSON.parse(fs.readFileSync(secretPath));
   const kp = Keypair.fromSecretKey(Uint8Array.from(secret));
   const provider = new anchor.AnchorProvider(connection, new anchor.Wallet(kp), { commitment: "confirmed" });
-  const program = new anchor.Program(idl, PROGRAM_ID, provider);
+  const program = new anchor.Program(idl, provider);
 
   console.log("Cluster:", RPC);
   console.log("Authority:", kp.publicKey.toBase58());
@@ -70,6 +70,5 @@ const vaultAuthPDA = pda([Buffer.from("vault_auth")]);
   console.log(`NEXT_PUBLIC_RPC=${RPC}`);
   console.log(`NEXT_PUBLIC_PROGRAM_ID=${PROGRAM_ID.toBase58()}`);
   console.log(`NEXT_PUBLIC_TOKEN_MINT=${TOKEN_MINT.toBase58()}`);
-  console.log("\nFund the vault with creator rewards:");
-  console.log(`  node scripts/fund-vault.js <amount_in_whole_tokens>`);
+  console.log("\nVault stays empty — SOLAX is burn-only; no team payouts.");
 })().catch((e) => { console.error("DEPLOY INIT FAILED:", e); process.exit(1); });

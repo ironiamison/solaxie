@@ -32,10 +32,7 @@ function loadKeypair(): Keypair {
 export const BurnerWalletName = "Burner (Local)" as WalletName<"Burner (Local)">;
 
 const ICON =
-  "data:image/svg+xml;base64," +
-  Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#9f7aea"/><text x="32" y="42" font-size="32" text-anchor="middle" fill="white">🔥</text></svg>`
-  ).toString("base64");
+  "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHJ4PSIxNCIgZmlsbD0iI2Y5ZjdhZSIvPjx0ZXh0IHg9IjMyIiB5PSI0MiIgZm9udC1zaXplPSIzMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0id2hpdGUiPvwnjIU8L3RleHQ+PC9zdmc+";
 
 /**
  * A self-contained wallet adapter backed by a browser-local keypair. Great for local/devnet

@@ -21,7 +21,7 @@ export default function BattleScreen({ game }: { game: GameApi }) {
             Battle Arena
           </Heading>
           <Text color="whiteAlpha.700" fontSize="sm">
-            Pick your fighter and an opponent. Winners earn SOLAX + XP · costs 5 energy.
+            Pick your fighter and an opponent. Winners earn DNA + XP · costs 5 energy.
           </Text>
         </VStack>
 

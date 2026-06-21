@@ -1,37 +1,51 @@
-import { AnchorProvider, BN, Program } from "@coral-xyz/anchor";
+import { AnchorProvider, BN } from "@coral-xyz/anchor";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
+  createBurnInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
   Connection,
-  PublicKey,
   SystemProgram,
   Transaction,
 } from "@solana/web3.js";
 import type { AnchorWallet } from "@solana/wallet-adapter-react";
-import idl from "@/idl/solaxie.json";
-import type { Solaxie } from "@/idl/solaxie";
 import {
-  PROGRAM_ID,
   TOKEN_DECIMALS,
   TOKEN_MINT,
+  axolPDA,
   configPDA,
   playerPDA,
-  vaultPDA,
-  vaultAuthorityPDA,
   getProgram,
+  type PlayerData,
 } from "@/utils/anchor";
-import { shopSku, solaxPriceToBaseUnits } from "@/lib/token";
+import { solaxPriceToBaseUnits } from "@/lib/token";
+import { chainAxolToUi } from "@/lib/chain-mapper";
+import type { Axol } from "@/lib/game";
+
+export type ChainPlayerState = {
+  energy: number;
+  maxEnergy: number;
+  battlesWon: number;
+  battlesLost: number;
+  axolCount: number;
+};
 
 export type ChainClient = {
-  /** True when the program config account exists on this cluster. */
   isReady: () => Promise<boolean>;
   fetchTokenBalance: () => Promise<number>;
+  fetchPlayer: () => Promise<PlayerData | null>;
+  fetchOwnedAxols: () => Promise<Axol[]>;
+  fetchAxolExists: (id: number) => Promise<boolean>;
   ensurePlayer: (name: string) => Promise<void>;
-  shopPurchase: (price: number, itemId: string) => Promise<string>;
+  /** Burn pump.fun SOLAX from the connected wallet (permanent supply reduction). */
+  burnSolax: (priceWhole: number) => Promise<string>;
+  mintAxol: () => Promise<{ sig: string; axol: Axol }>;
+  breed: (parentAId: number, parentBId: number) => Promise<{ sig: string; child: Axol }>;
+  battle: (myAxolId: number, opponentAxolId: number, counter: number) => Promise<{ sig: string; won: boolean }>;
+  refreshState: () => Promise<{ solax: number; energy: number; axols: Axol[]; player: ChainPlayerState | null }>;
 };
 
 export function createChainClient(
@@ -43,6 +57,17 @@ export function createChainClient(
   const owner = wallet.publicKey;
 
   const playerAta = () => getAssociatedTokenAddressSync(TOKEN_MINT, owner);
+
+  async function addAtaIfNeeded(tx: Transaction): Promise<ReturnType<typeof playerAta>> {
+    const ata = playerAta();
+    const ataInfo = await connection.getAccountInfo(ata);
+    if (!ataInfo) {
+      tx.add(
+        createAssociatedTokenAccountInstruction(owner, ata, owner, TOKEN_MINT),
+      );
+    }
+    return ata;
+  }
 
   async function isReady(): Promise<boolean> {
     try {
@@ -62,6 +87,53 @@ export function createChainClient(
     }
   }
 
+  async function fetchPlayer(): Promise<PlayerData | null> {
+    try {
+      return await program.account.playerData.fetch(playerPDA(owner));
+    } catch {
+      return null;
+    }
+  }
+
+  async function fetchOwnedAxols(): Promise<Axol[]> {
+    try {
+      const accounts = await program.account.axol.all([
+        {
+          memcmp: {
+            offset: 8,
+            bytes: owner.toBase58(),
+          },
+        },
+      ]);
+      return accounts
+        .map((a) => chainAxolToUi(a.account))
+        .sort((a, b) => a.id - b.id);
+    } catch (e) {
+      console.warn("[chain] fetchOwnedAxols", e);
+      return [];
+    }
+  }
+
+  async function fetchAxolExists(id: number): Promise<boolean> {
+    try {
+      await program.account.axol.fetch(axolPDA(id));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function burnSolax(priceWhole: number): Promise<string> {
+    const amount = solaxPriceToBaseUnits(priceWhole, TOKEN_DECIMALS);
+    if (amount <= BigInt(0)) throw new Error("Invalid burn amount");
+    const tx = new Transaction();
+    const ata = await addAtaIfNeeded(tx);
+    tx.add(createBurnInstruction(TOKEN_MINT, ata, owner, amount));
+    const sig = await provider.sendAndConfirm(tx, [], { commitment: "confirmed" });
+    console.info("[chain] burn", priceWhole, sig);
+    return sig;
+  }
+
   async function ensurePlayer(name: string): Promise<void> {
     try {
       await program.account.playerData.fetch(playerPDA(owner));
@@ -70,19 +142,8 @@ export function createChainClient(
       // not initialized yet
     }
 
-    const ata = playerAta();
     const tx = new Transaction();
-    const ataInfo = await connection.getAccountInfo(ata);
-    if (!ataInfo) {
-      tx.add(
-        createAssociatedTokenAccountInstruction(
-          owner,
-          ata,
-          owner,
-          TOKEN_MINT,
-        ),
-      );
-    }
+    await addAtaIfNeeded(tx);
 
     const ix = await program.methods
       .initPlayer(name.slice(0, 32))
@@ -90,9 +151,7 @@ export function createChainClient(
         player: playerPDA(owner),
         gameData: configPDA,
         tokenMint: TOKEN_MINT,
-        vaultAuthority: vaultAuthorityPDA,
-        vault: vaultPDA,
-        playerTokenAccount: ata,
+        playerTokenAccount: playerAta(),
         signer: owner,
         tokenProgram: TOKEN_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -105,41 +164,118 @@ export function createChainClient(
     console.info("[chain] init_player", sig);
   }
 
-  async function shopPurchase(price: number, itemId: string): Promise<string> {
-    const amount = solaxPriceToBaseUnits(price, TOKEN_DECIMALS);
-    if (amount <= BigInt(0)) throw new Error("Invalid purchase price");
-
-    const ata = playerAta();
+  async function mintAxol(): Promise<{ sig: string; axol: Axol }> {
+    const game = await program.account.gameData.fetch(configPDA);
+    const axolId = game.totalAxols;
     const tx = new Transaction();
-    const ataInfo = await connection.getAccountInfo(ata);
-    if (!ataInfo) {
-      tx.add(
-        createAssociatedTokenAccountInstruction(
-          owner,
-          ata,
-          owner,
-          TOKEN_MINT,
-        ),
-      );
-    }
+    await addAtaIfNeeded(tx);
 
-    const sku = shopSku(itemId);
     const ix = await program.methods
-      .shopPurchase(new BN(amount.toString()), sku)
+      .mintAxol(new BN(axolId.toString()))
       .accountsStrict({
+        player: playerPDA(owner),
         gameData: configPDA,
-        playerTokenAccount: ata,
-        vault: vaultPDA,
+        tokenMint: TOKEN_MINT,
+        axol: axolPDA(axolId),
+        playerTokenAccount: playerAta(),
         signer: owner,
         tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
       })
       .instruction();
 
     tx.add(ix);
-    return provider.sendAndConfirm(tx, [], { commitment: "confirmed" });
+    const sig = await provider.sendAndConfirm(tx, [], { commitment: "confirmed" });
+    const axol = chainAxolToUi(await program.account.axol.fetch(axolPDA(axolId)));
+    return { sig, axol };
   }
 
-  return { isReady, fetchTokenBalance, ensurePlayer, shopPurchase };
+  async function breed(parentAId: number, parentBId: number): Promise<{ sig: string; child: Axol }> {
+    const game = await program.account.gameData.fetch(configPDA);
+    const childId = game.totalAxols;
+
+    const ix = await program.methods
+      .breed(new BN(childId.toString()))
+      .accountsStrict({
+        player: playerPDA(owner),
+        gameData: configPDA,
+        tokenMint: TOKEN_MINT,
+        parentA: axolPDA(parentAId),
+        parentB: axolPDA(parentBId),
+        child: axolPDA(childId),
+        playerTokenAccount: playerAta(),
+        signer: owner,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const sig = await provider.sendAndConfirm(new Transaction().add(ix), [], { commitment: "confirmed" });
+    const child = chainAxolToUi(await program.account.axol.fetch(axolPDA(childId)));
+    return { sig, child };
+  }
+
+  async function battle(
+    myAxolId: number,
+    opponentAxolId: number,
+    counter: number,
+  ): Promise<{ sig: string; won: boolean }> {
+    const before = await fetchPlayer();
+    const wonBefore = before?.battlesWon ?? 0;
+
+    const ix = await program.methods
+      .battle(counter)
+      .accountsStrict({
+        player: playerPDA(owner),
+        gameData: configPDA,
+        myAxol: axolPDA(myAxolId),
+        opponent: axolPDA(opponentAxolId),
+        signer: owner,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const sig = await provider.sendAndConfirm(new Transaction().add(ix), [], { commitment: "confirmed" });
+    const after = await fetchPlayer();
+    const won = (after?.battlesWon ?? wonBefore) > wonBefore;
+    return { sig, won };
+  }
+
+  async function refreshState() {
+    const [solax, axols, player] = await Promise.all([
+      fetchTokenBalance(),
+      fetchOwnedAxols(),
+      fetchPlayer(),
+    ]);
+    return {
+      solax,
+      axols,
+      energy: player ? Number(player.energy) : 0,
+      player: player
+        ? {
+            energy: Number(player.energy),
+            maxEnergy: 100,
+            battlesWon: player.battlesWon,
+            battlesLost: player.battlesLost,
+            axolCount: player.axolCount,
+          }
+        : null,
+    };
+  }
+
+  return {
+    isReady,
+    fetchTokenBalance,
+    fetchPlayer,
+    fetchOwnedAxols,
+    fetchAxolExists,
+    ensurePlayer,
+    burnSolax,
+    mintAxol,
+    breed,
+    battle,
+    refreshState,
+  };
 }
 
-export { PROGRAM_ID, TOKEN_MINT, TOKEN_DECIMALS };
+export { TOKEN_MINT, TOKEN_DECIMALS };

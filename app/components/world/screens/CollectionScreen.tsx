@@ -18,6 +18,9 @@ import { UI } from "@/lib/ui-icons";
 import { GameIcon } from "../GameIcon";
 import type { WorldApi } from "../world";
 import { ScreenShell, ScreenTop } from "../ScreenChrome";
+import { SolaxyDex } from "../SolaxyDex";
+import { PondArrangeControls, PondLayer } from "../PondLayer";
+import { dexProgress } from "@/lib/dex-catalog";
 
 type DetailTab = "Details" | "Genes" | "Lineage" | "Achievements";
 type SortMode = "Newest" | "Oldest" | "Level" | "Rarity";
@@ -25,12 +28,6 @@ type SortMode = "Newest" | "Oldest" | "Level" | "Rarity";
 const BOX_CAP = 50;
 const POND_CAP = 5;
 const POND_PER_PAGE = 3;
-
-const POND_SPOTS = [
-  { left: "26%", top: "44%", scale: 0.92 },
-  { left: "50%", top: "34%", scale: 1.06 },
-  { left: "74%", top: "46%", scale: 0.92 },
-];
 
 const EGG_SLOTS: { rarity: Rarity; label: string }[] = [
   { rarity: "Epic", label: "Epic" },
@@ -46,6 +43,7 @@ export default function CollectionScreen({ world }: { world: WorldApi }) {
   const [rarityFilter, setRarityFilter] = useState<"All" | Rarity>("All");
   const [sort, setSort] = useState<SortMode>("Newest");
   const [box, setBox] = useState(0);
+  const [leftTab, setLeftTab] = useState<"box" | "dex">("box");
   const [pondPage, setPondPage] = useState(0);
   const [releaseMode, setReleaseMode] = useState(false);
 
@@ -74,6 +72,7 @@ export default function CollectionScreen({ world }: { world: WorldApi }) {
   const pondPages = Math.max(1, Math.ceil(pondTotal / POND_PER_PAGE));
   const pondStart = (pondPage % pondPages) * POND_PER_PAGE;
   const pondFeatured = pondSource.slice(pondStart, pondStart + POND_PER_PAGE);
+  const pondDisplayAxols = pondFeatured;
 
   useEffect(() => {
     if (pondPage >= pondPages) setPondPage(0);
@@ -81,7 +80,7 @@ export default function CollectionScreen({ world }: { world: WorldApi }) {
 
   const onCardClick = (a: Axol) => {
     if (releaseMode) {
-      world.toast(`Releasing is permanent — tap RELEASE again to cancel`);
+      world.releaseAxol(a.id);
       return;
     }
     world.setSelectedId(a.id);
@@ -130,7 +129,8 @@ export default function CollectionScreen({ world }: { world: WorldApi }) {
         {/* LEFT: pond + collection box */}
         <div className="col-span-12 space-y-3 lg:col-span-8">
           <PondView
-            featured={pondFeatured}
+            world={world}
+            axols={pondDisplayAxols}
             selectedId={selected?.id ?? null}
             indicator={`${Math.min(pondStart + POND_PER_PAGE, pondTotal)} / ${Math.max(POND_CAP, pondTotal)}`}
             canPage={pondPages > 1}
@@ -138,17 +138,24 @@ export default function CollectionScreen({ world }: { world: WorldApi }) {
             onNext={() => setPondPage((p) => (p + 1) % pondPages)}
             onPick={(a) => world.setSelectedId(a.id)}
             onViews={() => world.toast("Pond camera angle changed")}
-            onEdit={() => world.toast("Arrange your pond — coming soon")}
           />
 
           <CollectionBox
             world={world}
+            leftTab={leftTab}
+            setLeftTab={setLeftTab}
             box={box}
             setBox={setBox}
             cards={filtered}
             selectedId={selected?.id ?? null}
             releaseMode={releaseMode}
-            toggleRelease={() => { setReleaseMode((r) => !r); world.toast(releaseMode ? "Release cancelled" : "Release mode — choose a Solaxy"); }}
+            toggleRelease={() => {
+              setReleaseMode((r) => {
+                const next = !r;
+                world.toast(next ? "Release mode — tap a Solaxy to remove it permanently" : "Release cancelled");
+                return next;
+              });
+            }}
             onCardClick={onCardClick}
           />
         </div>
@@ -203,7 +210,8 @@ function Dropdown({ label, options, onPick }: { label: string; options: { v: str
 /* ----------------------------- Pond view --------------------------------- */
 
 function PondView({
-  featured,
+  world,
+  axols,
   selectedId,
   indicator,
   canPage,
@@ -211,9 +219,9 @@ function PondView({
   onNext,
   onPick,
   onViews,
-  onEdit,
 }: {
-  featured: Axol[];
+  world: WorldApi;
+  axols: Axol[];
   selectedId: number | null;
   indicator: string;
   canPage: boolean;
@@ -221,7 +229,6 @@ function PondView({
   onNext: () => void;
   onPick: (a: Axol) => void;
   onViews: () => void;
-  onEdit: () => void;
 }) {
   return (
     <div className="glass relative h-[280px] overflow-hidden rounded-3xl shadow-panel sm:h-[330px]">
@@ -234,11 +241,17 @@ function PondView({
         <span className="grid h-5 w-5 place-items-center rounded-full bg-ink-900/70 text-[0.6rem] text-white/60 backdrop-blur">i</span>
       </div>
 
-      {/* creatures */}
-      {featured.map((a, i) => {
-        const spot = POND_SPOTS[i] ?? POND_SPOTS[POND_SPOTS.length - 1];
-        return <PondCreature key={a.id} axol={a} spot={spot} selected={a.id === selectedId} delay={i * 0.5} onClick={() => onPick(a)} />;
-      })}
+      {axols.length > 0 && (
+        <PondLayer
+          axols={axols}
+          layout={world.pondLayouts.collection}
+          arranging={false}
+          variant="collection"
+          selectedId={selectedId}
+          onPick={onPick}
+          onSpotChange={world.setPondSpot}
+        />
+      )}
 
       {/* paging */}
       {canPage && (
@@ -254,30 +267,17 @@ function PondView({
       </button>
       <div className="absolute bottom-3 right-3 z-20 flex items-center gap-2">
         <span className="rounded-full border border-white/15 bg-ink-900/70 px-2.5 py-1 text-[0.66rem] font-bold text-white/70 backdrop-blur">{indicator}</span>
-        <button onClick={onEdit} className="grid h-7 w-7 place-items-center rounded-full border border-white/15 bg-ink-900/70 text-[0.7rem] text-white/70 backdrop-blur transition hover:bg-white/15">✎</button>
+        {world.axols.length > 0 && (
+          <PondArrangeControls
+            labeled
+            arranging={world.pondArranging && world.pondArrangeView === "collection"}
+            onToggle={() =>
+              world.pondArranging ? world.closePondArrange() : world.openPondArrange("collection")
+            }
+          />
+        )}
       </div>
     </div>
-  );
-}
-
-function PondCreature({ axol, spot, selected, delay, onClick }: { axol: Axol; spot: { left: string; top: string; scale: number }; selected: boolean; delay: number; onClick: () => void }) {
-  const color = CLASS_META[axol.cls].color;
-  const size = 96 * spot.scale;
-  return (
-    <button onClick={onClick} className="group absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center" style={{ left: spot.left, top: spot.top }}>
-      <div className={`mb-1 rounded-lg border bg-ink-900/80 px-2.5 py-1 text-center backdrop-blur transition ${selected ? "border-emerald-300/70 shadow-glow" : "border-white/12"}`}>
-        <div className="whitespace-nowrap text-[0.68rem] font-extrabold leading-tight text-white">{CLASS_META[axol.cls].name} #{axol.id}</div>
-        <div className="text-[0.55rem] font-semibold text-cyan-200/80">Lv.{axol.level}</div>
-        <div className="text-[0.5rem] text-white/50">{axol.status}</div>
-      </div>
-      <div className="relative" style={{ width: size, height: size }}>
-        <span className="absolute bottom-2 left-1/2 h-3 w-2/3 -translate-x-1/2 animate-ripple rounded-[50%] border border-cyan-100/50" style={{ animationDelay: `${delay}s` }} />
-        <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full blur-lg" style={{ width: size * 0.55, height: size * 0.3, background: `${color}55` }} />
-        <div className="animate-bob" style={{ animationDelay: `${delay}s` }}>
-          <img src={axolSprite(axol)} alt="" className="mx-auto transition group-hover:scale-105" style={{ width: size, height: size, objectFit: "contain", filter: `drop-shadow(0 7px 6px rgba(0,0,0,0.45)) drop-shadow(0 0 12px ${color}55)` }} draggable={false} />
-        </div>
-      </div>
-    </button>
   );
 }
 
@@ -285,6 +285,8 @@ function PondCreature({ axol, spot, selected, delay, onClick }: { axol: Axol; sp
 
 function CollectionBox({
   world,
+  leftTab,
+  setLeftTab,
   box,
   setBox,
   cards,
@@ -294,6 +296,8 @@ function CollectionBox({
   onCardClick,
 }: {
   world: WorldApi;
+  leftTab: "box" | "dex";
+  setLeftTab: (t: "box" | "dex") => void;
   box: number;
   setBox: (n: number) => void;
   cards: Axol[];
@@ -303,28 +307,60 @@ function CollectionBox({
   onCardClick: (a: Axol) => void;
 }) {
   const total = world.axols.length;
+  const dex = dexProgress(world.axols);
   const isBox1 = box === 0;
   const showCards = isBox1 ? cards : [];
 
   return (
     <div className="glass rounded-3xl p-3 shadow-panel sm:p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <h2 className="font-display text-sm font-extrabold uppercase tracking-wide text-white">Collection Box</h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-xl border border-white/10 bg-black/35 p-0.5">
+            <button
+              onClick={() => setLeftTab("box")}
+              className={`rounded-[10px] px-3 py-1.5 font-display text-[0.72rem] font-extrabold uppercase tracking-wide transition ${
+                leftTab === "box" ? "bg-gradient-to-r from-brand-400 to-brand-600 text-white shadow-glow" : "text-white/50 hover:text-white/75"
+              }`}
+            >
+              Collection Box
+            </button>
+            <button
+              onClick={() => setLeftTab("dex")}
+              className={`rounded-[10px] px-3 py-1.5 font-display text-[0.72rem] font-extrabold uppercase tracking-wide transition ${
+                leftTab === "dex" ? "bg-gradient-to-r from-fuchsia-500 to-brand-500 text-white shadow-glow" : "text-white/50 hover:text-white/75"
+              }`}
+            >
+              SolaxyDex
+            </button>
+          </div>
           <span className="flex items-center gap-1 rounded-full bg-black/30 px-2 py-0.5 text-[0.62rem] font-bold text-white/60">
-            <GameIcon src={UI.paw} size={14} /> {total} / {BOX_CAP}
+            {leftTab === "box" ? (
+              <>
+                <GameIcon src={UI.paw} size={14} /> {total} / {BOX_CAP}
+              </>
+            ) : (
+              <>
+                <GameIcon src={UI.cosmic} size={14} /> {dex.unlocked} / {dex.total}
+              </>
+            )}
           </span>
         </div>
-        <button
-          onClick={toggleRelease}
-          className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-[0.62rem] font-extrabold uppercase tracking-wide transition ${
-            releaseMode ? "border-rose-400/60 bg-rose-500/20 text-rose-200" : "border-white/12 bg-black/30 text-white/55 hover:bg-white/10"
-          }`}
-        >
-          <GameIcon src={UI.trash} size={14} /> Release
-        </button>
+        {leftTab === "box" && (
+          <button
+            onClick={toggleRelease}
+            className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-[0.62rem] font-extrabold uppercase tracking-wide transition ${
+              releaseMode ? "border-rose-400/60 bg-rose-500/20 text-rose-200" : "border-white/12 bg-black/30 text-white/55 hover:bg-white/10"
+            }`}
+          >
+            <GameIcon src={UI.trash} size={14} /> Release
+          </button>
+        )}
       </div>
 
+      {leftTab === "dex" ? (
+        <SolaxyDex axols={world.axols} onToast={world.toast} />
+      ) : (
+        <>
       {/* box tabs */}
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         {[0, 1, 2, 3].map((b) => (
@@ -367,6 +403,8 @@ function CollectionBox({
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }
@@ -492,11 +530,13 @@ function DetailPanel({ world, axol, tab, setTab }: { world: WorldApi; axol: Axol
           icon={UI.heart}
           color="#ff6b6b"
           cost={feedCost(axol.level)}
-          onClick={() => {
+          onClick={async () => {
             const c = feedCost(axol.level);
-            world.feedAxol(axol.id)
-              ? world.toast(`Fed ${CLASS_META[axol.cls].name} #${axol.id} · −${c.toLocaleString()} SOLAX`)
-              : world.toast(`Need ${c.toLocaleString()} SOLAX to feed`);
+            if (await world.feedAxol(axol.id)) {
+              world.toast(`Fed ${CLASS_META[axol.cls].name} #${axol.id} · −${c.toLocaleString()} SOLAX burned`);
+            } else {
+              world.toast(`Need ${c.toLocaleString()} SOLAX in wallet`);
+            }
           }}
         />
         <Action
@@ -504,11 +544,13 @@ function DetailPanel({ world, axol, tab, setTab }: { world: WorldApi; axol: Axol
           icon={UI.boost}
           color="#54e07a"
           cost={powerUpCost(axol.level)}
-          onClick={() => {
+          onClick={async () => {
             const c = powerUpCost(axol.level);
-            world.powerUp(axol.id)
-              ? world.toast(`Powered up to Lv.${axol.level + 1}! · −${c.toLocaleString()} SOLAX`)
-              : world.toast(`Need ${c.toLocaleString()} SOLAX to power up`);
+            if (await world.powerUp(axol.id)) {
+              world.toast(`Powered up to Lv.${axol.level + 1}! · −${c.toLocaleString()} SOLAX burned`);
+            } else {
+              world.toast(`Need ${c.toLocaleString()} SOLAX in wallet`);
+            }
           }}
         />
         <Action label={isActive ? "Active" : "Set Active"} icon={UI.crown} color="#ffb02e" active={isActive} onClick={() => { world.setActive(axol.id); world.toast(`${CLASS_META[axol.cls].name} #${axol.id} set as leader`); }} />

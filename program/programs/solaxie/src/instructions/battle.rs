@@ -5,11 +5,8 @@ use crate::state::axol::Axol;
 use crate::state::game_data::GameData;
 use crate::state::player_data::PlayerData;
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
-/// Battle the player's Axol against an opponent Axol (PvP or sparring vs any Axol).
-/// Costs energy; the winner earns tokens paid out of the treasury vault, capped by the
-/// vault's balance. Resolved on-chain with a deterministic, slot-seeded simulation.
+/// Battle the player's Axol against an opponent. Costs energy; XP only — no token payouts.
 pub fn battle(ctx: Context<Battle>, counter: u16) -> Result<()> {
     let player = &mut ctx.accounts.player;
     player.update_energy()?;
@@ -28,35 +25,15 @@ pub fn battle(ctx: Context<Battle>, counter: u16) -> Result<()> {
 
     let won = resolve_battle(&my_axol.as_combatant(), &opponent.as_combatant(), seed);
 
-    let reward;
-    let xp_gain;
+    let xp_gain = if won {
+        30 + (opponent.level as u64) * 5
+    } else {
+        10
+    };
     if won {
-        reward = BATTLE_WIN_REWARD + (opponent.level as u64) * ONE_TOKEN / 5;
-        xp_gain = 30 + (opponent.level as u64) * 5;
         player.battles_won = player.battles_won.saturating_add(1);
     } else {
-        reward = BATTLE_LOSS_REWARD;
-        xp_gain = 10;
         player.battles_lost = player.battles_lost.saturating_add(1);
-    }
-
-    // Pay the reward out of the vault, capped by what it holds.
-    let payout = reward.min(ctx.accounts.vault.amount);
-    if payout > 0 {
-        let bump = ctx.bumps.vault_authority;
-        let seeds: &[&[u8]] = &[b"vault_auth".as_ref(), &[bump]];
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
-                    to: ctx.accounts.player_token_account.to_account_info(),
-                    authority: ctx.accounts.vault_authority.to_account_info(),
-                },
-                &[seeds],
-            ),
-            payout,
-        )?;
     }
 
     let my_axol = &mut ctx.accounts.my_axol;
@@ -64,12 +41,10 @@ pub fn battle(ctx: Context<Battle>, counter: u16) -> Result<()> {
 
     let game_data = &mut ctx.accounts.game_data;
     game_data.total_battles = game_data.total_battles.saturating_add(1);
-    game_data.total_rewards_paid = game_data.total_rewards_paid.saturating_add(payout);
 
     msg!(
-        "Battle: {} | payout {} base units | xp +{}",
+        "Battle: {} | xp +{}",
         if won { "WIN" } else { "LOSS" },
-        payout,
         xp_gain
     );
     Ok(())
@@ -106,22 +81,7 @@ pub struct Battle<'info> {
     )]
     pub opponent: Account<'info, Axol>,
 
-    #[account(
-        mut,
-        constraint = player_token_account.mint == game_data.token_mint @ GameErrorCode::InvalidGenes,
-        constraint = player_token_account.owner == signer.key() @ GameErrorCode::WrongAuthority,
-    )]
-    pub player_token_account: Account<'info, TokenAccount>,
-
-    #[account(mut, seeds = [b"vault".as_ref()], bump)]
-    pub vault: Account<'info, TokenAccount>,
-
-    /// CHECK: PDA that owns the vault; validated via seeds.
-    #[account(seeds = [b"vault_auth".as_ref()], bump)]
-    pub vault_authority: UncheckedAccount<'info>,
-
     #[account(mut)]
     pub signer: Signer<'info>,
-    pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }

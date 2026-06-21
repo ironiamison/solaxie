@@ -283,6 +283,8 @@ export function BreedModal({
 
         {axols.length < 2 ? (
           <p className="py-12 text-center text-white/60">You need at least 2 Solaxies to breed. Roll some at the DNA Core first!</p>
+        ) : phase === "hatched" && child ? (
+          <HatchReveal child={child} onAgain={reset} onClose={onClose} />
         ) : (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
             <ParentSlot label="Parent A" axol={parentA} phase={phase} onPick={() => setPicking("A")} />
@@ -434,7 +436,7 @@ function BreedingCore({
   }, [compat, ready]);
 
   if (child && phase === "hatched") {
-    return <HatchReveal child={child} onAgain={onReset} onClose={onClose} />;
+    return null;
   }
 
   const compatColor = compat >= 85 ? "#54e07a" : compat >= 70 ? "#ffb02e" : "#ff6b6b";
@@ -685,7 +687,10 @@ export function BattleModal({
           <p className="text-center text-sm text-white/70">
             {outcome.result.advantage === "you" && "Type advantage in your favor! "}
             {outcome.result.advantage === "enemy" && "Enemy had the type advantage. "}
-            You earned <b className="text-white">+{outcome.result.rewardSolax} SOLAX</b> and <b className="text-white">+{outcome.result.rewardXp} XP</b>.
+            You earned{" "}
+            {outcome.result.win && <><b className="text-white">+5 DNA</b>, </>}
+            <b className="text-white">+{outcome.result.rewardXp} XP</b>
+            {outcome.result.win && <>, and <b className="text-amber-200">activity tickets</b></>}.
           </p>
           <div className="flex justify-center gap-3">
             <PrimaryButton variant="red" onClick={() => setOutcome(null)} disabled={!afford}>
@@ -763,7 +768,7 @@ export function MarketModal({
     setTimeout(() => setMsg(null), 1800);
   };
   return (
-    <Modal iconSrc={UI.market} title="Harbor Market" subtitle="Spend SOLAX on supplies. Player trading coming soon." onClose={onClose}>
+    <Modal iconSrc={UI.market} title="Harbor Market" subtitle="Spend SOLAX on supplies. Player trading — Version 1.3." onClose={onClose}>
       <div className="grid gap-3 sm:grid-cols-3">
         {items.map((it) => (
           <div key={it.key} className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-black/30 p-4 text-center">
@@ -777,7 +782,7 @@ export function MarketModal({
         ))}
       </div>
       <div className="mt-4 rounded-2xl border border-dashed border-white/15 p-4 text-center text-sm text-white/50">
-        🪙 Player-to-player Axol trading is coming soon.
+        🪙 Player-to-player Solaxy trading — coming in Version 1.3.
       </div>
       {msg && (
         <div className="mt-3 rounded-xl bg-brand-400/20 py-2 text-center text-sm font-bold text-brand-300 animate-fade">{msg}</div>

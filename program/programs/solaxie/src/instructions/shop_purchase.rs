@@ -2,10 +2,9 @@ use crate::constants::*;
 use crate::errors::GameErrorCode;
 use crate::state::game_data::GameData;
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount};
 
-/// Pay for a shop item: SPL tokens move from the buyer into the treasury vault (sink).
-/// The client grants in-game rewards only after this transaction confirms.
+/// Pay for a shop item — SPL tokens are burned (removed from supply).
 pub fn shop_purchase(ctx: Context<ShopPurchase>, amount: u64, sku: u32) -> Result<()> {
     require!(amount > 0, GameErrorCode::InvalidPurchase);
     require!(amount <= MAX_SHOP_PURCHASE, GameErrorCode::InvalidPurchase);
@@ -15,12 +14,12 @@ pub fn shop_purchase(ctx: Context<ShopPurchase>, amount: u64, sku: u32) -> Resul
         GameErrorCode::NotEnoughTokens
     );
 
-    token::transfer(
+    token::burn(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
-            Transfer {
+            Burn {
+                mint: ctx.accounts.token_mint.to_account_info(),
                 from: ctx.accounts.player_token_account.to_account_info(),
-                to: ctx.accounts.vault.to_account_info(),
                 authority: ctx.accounts.signer.to_account_info(),
             },
         ),
@@ -34,7 +33,7 @@ pub fn shop_purchase(ctx: Context<ShopPurchase>, amount: u64, sku: u32) -> Resul
         timestamp: Clock::get()?.unix_timestamp,
     });
 
-    msg!("Shop purchase: {} base units (sku {})", amount, sku);
+    msg!("Shop burn: {} base units (sku {})", amount, sku);
     Ok(())
 }
 
@@ -51,15 +50,15 @@ pub struct ShopPurchase<'info> {
     #[account(seeds = [b"config".as_ref()], bump)]
     pub game_data: Account<'info, GameData>,
 
+    #[account(mut, address = game_data.token_mint)]
+    pub token_mint: Account<'info, Mint>,
+
     #[account(
         mut,
         constraint = player_token_account.mint == game_data.token_mint @ GameErrorCode::InvalidGenes,
         constraint = player_token_account.owner == signer.key() @ GameErrorCode::WrongAuthority,
     )]
     pub player_token_account: Account<'info, TokenAccount>,
-
-    #[account(mut, seeds = [b"vault".as_ref()], bump)]
-    pub vault: Account<'info, TokenAccount>,
 
     #[account(mut)]
     pub signer: Signer<'info>,

@@ -158,7 +158,7 @@ const SHIPS: Ship[] = [
     accent: "#9aa4b2",
     periodMs: 2 * HOUR,
     items: [
-      { id: "ps1", name: "Loot Crate", icon: UI.coin, price: 31500, rarity: "Rare", note: "+1,400 SOLAX", reward: { solax: 1400 } },
+      { id: "ps1", name: "Loot Crate", icon: UI.coin, price: 31500, rarity: "Rare", note: "+25 DNA", reward: { dna: 25 } },
       { id: "ps2", name: "Black Egg", img: "/egg-cosmic.png", price: 108000, rarity: "Epic", reward: { eggs: 1 } },
       { id: "ps3", name: "Plunder DNA", icon: UI.dna, price: 37500, rarity: "Rare", note: "+12 DNA", reward: { dna: 12 } },
     ],
@@ -186,7 +186,7 @@ const SHIPS: Ship[] = [
     items: [
       { id: "gc1", name: "Golden Egg", img: "/egg-cosmic.png", price: 378000, was: 546000, rarity: "Legendary", reward: { eggs: 1 }, stock: 2 },
       { id: "gc2", name: "Royal DNA ×50", icon: UI.dna, price: 252000, rarity: "Cosmic", note: "+50 DNA", reward: { dna: 50 }, stock: 3 },
-      { id: "gc3", name: "Treasure Hoard", icon: UI.coin, price: 147000, rarity: "Legendary", note: "+8,400 SOLAX", reward: { solax: 8400 }, stock: 2 },
+      { id: "gc3", name: "Treasure Hoard", icon: UI.coin, price: 147000, rarity: "Legendary", note: "+50 DNA + 5 eggs", reward: { dna: 50, eggs: 5 }, stock: 2 },
     ],
   },
 ];
@@ -244,7 +244,7 @@ function fmtClock(ms: number) {
 const harborLevel = (xp: number) => Math.min(20, Math.floor(xp / 320) + 1);
 
 const FEED_NAMES = ["James", "Sarah", "Mike", "Nova", "Luna", "AxolMaster", "Kai", "Zara", "Pixel", "Reef", "Echo", "Mochi"];
-const FEED_CLS: AxolClass[] = ["beast", "plant", "aquatic", "bird", "bug", "reptile"];
+const FEED_CLS: AxolClass[] = ["beast", "plant", "aquatic", "bird", "bug", "reptile", "crystal", "shadow", "mech", "ember", "void"];
 type Feed = { id: number; who: string; verb: string; what: string; color: string; img: string; amt?: number };
 let feedSeq = 1;
 function randomFeed(): Feed {

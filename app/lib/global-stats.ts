@@ -1,12 +1,16 @@
 export type EconomyTotals = {
-  totalSpent: number;
-  totalBurned: number;
+  /** All SOLAX removed from circulation (in-game sinks + on-chain vault). */
+  totalSunk: number;
   offChainSpent: number;
   offChainBurned: number;
   vaultSolax: number;
   programId: string;
   tokenMint: string;
   updatedAt: number;
+  /** @deprecated Same as totalSunk — kept for older clients */
+  totalSpent?: number;
+  /** @deprecated Same as totalSunk — kept for older clients */
+  totalBurned?: number;
 };
 
 export async function fetchEconomyTotals(): Promise<EconomyTotals> {
