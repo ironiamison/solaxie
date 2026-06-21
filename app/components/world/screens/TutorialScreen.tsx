@@ -300,6 +300,27 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
             Patch notes for Solaxie island. New Solaxies, features, and fixes ship here first.
           </p>
 
+          <div className="rounded-2xl border border-amber-400/25 bg-amber-500/5 p-4">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 font-display text-[0.68rem] font-extrabold uppercase tracking-wide text-amber-200">
+                Version 1.2.1
+              </span>
+              <span className="text-[0.62rem] font-bold uppercase tracking-wide text-emerald-300/80">Live now</span>
+            </div>
+            <p className="mb-2 text-[0.72rem] text-white/55">Launch-week stability pass — wallet economy, saves, and spends hardened for mainnet.</p>
+            <ul className="list-inside list-disc space-y-1.5 text-[0.74rem] text-white/70">
+              <li><b className="text-white">SOLAX economy live</b> — in-game spends transfer real pump.fun SOLAX (Token-2022) to the public burn wallet; every purchase, feed, power-up, and market buy sinks tokens on-chain.</li>
+              <li><b className="text-white">Wallet balance accuracy</b> — top bar and Harbor now read your live SPL balance with multi-RPC fallback so SOLAX displays correctly across devices.</li>
+              <li><b className="text-white">Spend flow polish</b> — feed, power-up, Harbor, and energy refills reliably open your wallet for approval; balance refreshes before each transaction.</li>
+              <li><b className="text-white">Cloud roster backup</b> — trainer profile, Solaxy roster, DNA/eggs/energy, pond layouts, and battle history sync to cloud; reconnect on a new browser or device to pick up where you left off.</li>
+              <li><b className="text-white">Registry restore</b> — if local cache is cleared, your island can rebuild from the global trainer registry on wallet connect.</li>
+              <li><b className="text-white">Settings</b> — audio, notification toasts, wallet copy, and disconnect (profile menu → Settings).</li>
+              <li><b className="text-white">Harbor boosters</b> — lucky charms and odds items bought at Market apply to DNA Core spins; XP potions grant instantly.</li>
+              <li><b className="text-white">Launch airdrop</b> — one-time +5 eggs and +4 breed slots per Solaxy for early trainers.</li>
+              <li><b className="text-white">Copy &amp; UX</b> — play-and-earn messaging, trainer names without .sol suffix, battle energy aligned with UI, and clearer spend toasts.</li>
+            </ul>
+          </div>
+
           <div className="rounded-2xl border border-cyan-400/25 bg-cyan-500/5 p-4">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-cyan-500/20 px-2.5 py-0.5 font-display text-[0.68rem] font-extrabold uppercase tracking-wide text-cyan-200">
@@ -311,8 +332,8 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
               <li><b className="text-white">Classic dex art pass</b> — replace color-filter echoes on the original 6 elements with unique illustrated sprites per form (same quality as Primal lines). Filters let us ship 85 forms fast; v1.3 makes every entry feel collectible.</li>
               <li><b className="text-white">Classified Solaxies</b> — unlock Zephyr, Nocturne, Mycelium, Solara, Glacier, and Mirage as a new season drop.</li>
               <li><b className="text-white">Player-to-player trading</b> — list and buy Solaxies from other trainers at the Harbor.</li>
-              <li><b className="text-white">Settings</b> — audio, notifications, and wallet account (live in v1.3).</li>
-              <li><b className="text-white">Harbor boosters</b> — lucky charms and odds items from Market apply to DNA Core spins.</li>
+              <li><b className="text-white">Friends list</b> — follow trainers and see when they&apos;re in the Arena.</li>
+              <li><b className="text-white">Full battle log &amp; achievements</b> — complete history and badge hall in Empire.</li>
             </ul>
           </div>
 
@@ -331,7 +352,7 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
               <li><b className="text-white">Season payouts (pending SOLAX)</b> — pump.fun creator rewards shared by ticket share at season end; activates once token + vault init are live.</li>
               <li><b className="text-white">Retuned Arena leagues</b> — faster early promotions (Bronze IV at 1 trophy → Bronze III at 100 → 250 → 500 …); rank synced everywhere (profile, Arena, Empire).</li>
               <li><b className="text-white">Daily quest payouts</b> — complete all 3 quests for mystery egg + tickets + trainer XP once per UTC day.</li>
-              <li><b className="text-white">Pay-to-play flywheel copy</b> — tutorial, wallet modal, SEO, and Island Economy meter explain burn + tickets (no inflationary P2E).</li>
+              <li><b className="text-white">Play-and-earn messaging</b> — tutorial, wallet modal, SEO, and Island Economy meter explain activity tickets and on-chain SOLAX sinks.</li>
               <li><b className="text-white">Arena rank fix</b> — removed fake demo trophy count; Arena reads real saved profile data.</li>
               <li><b className="text-white">Cloud save</b> — trainer profile (incl. tickets + XP), quests, pond layouts, and battle history sync via Vercel Blob (local dev uses browser + server memory).</li>
               <li><b className="text-white">On-chain program</b> — deployed on mainnet; mint/breed/battle go live once SOLAX launches on pump.fun and the vault is initialized.</li>
