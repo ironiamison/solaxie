@@ -1,5 +1,6 @@
 import type { Axol, BattleResult, FeedItem, Resources } from "@/lib/game";
 import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile";
+import type { PublicPlayer } from "@/lib/public-player";
 
 export type Screen = "home" | "collection" | "battle" | "market" | "dnacore" | "empire";
 
@@ -38,7 +39,14 @@ export type WorldApi = {
 
   doRoll: (luck?: number) => Promise<Axol | null>;
   doBreed: (a: number, b: number, extraFee?: number) => Promise<Axol | null>;
-  doBattle: (myId: number) => Promise<{ mine: Axol; enemy: Axol; result: BattleResult } | null>;
+  doBattle: (myId: number, enemy?: Axol) => Promise<{ mine: Axol; enemy: Axol; result: BattleResult } | null>;
+
+  /** Visit another trainer's public Empire Hall. */
+  visitEmpire: (wallet: string) => void;
+  /** Return to your own empire from a visited profile. */
+  closeVisitedEmpire: () => void;
+  viewingPlayer: PublicPlayer | null;
+  openLeaderboard: () => void;
 
   /** Spend SOLAX or SPL (when itemId set). Returns false if too poor or tx fails. */
   purchase: (price: number, reward?: Partial<Resources>, label?: string, itemId?: string) => Promise<boolean>;

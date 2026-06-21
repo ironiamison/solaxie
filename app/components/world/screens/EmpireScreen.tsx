@@ -1,64 +1,92 @@
 import { useMemo, useState } from "react";
-import { CLASS_META } from "@/lib/game";
+import { CLASS_META, axolSprite } from "@/lib/game";
 import {
   MOCK_EMPIRE_FEED,
-  MOCK_LEADERBOARD,
   MOCK_LEGENDS,
   avatarSrc,
 } from "@/lib/profile";
+import type { PublicPlayer } from "@/lib/public-player";
+import { avatarForPlayer } from "@/lib/public-player";
+import { LeaderboardPanel } from "../LeaderboardPanel";
 import type { WorldApi } from "../world";
 import { Panel, ScreenShell, ScreenTop, SectionTitle } from "../ScreenChrome";
 
-type LbTab = "global" | "friends" | "empire";
 type RightTab = "achievements" | "history";
 
 export default function EmpireScreen({ world }: { world: WorldApi }) {
-  const p = world.profile;
-  const [lbTab, setLbTab] = useState<LbTab>("global");
+  const guest = world.viewingPlayer;
+  const isGuest = !!guest;
+  const p = isGuest
+    ? {
+        name: guest.name,
+        empireName: guest.empireName,
+        avatarId: guest.avatarId,
+        level: guest.level,
+        xp: 0,
+        xpToNext: 100,
+        league: guest.league,
+        trophies: guest.trophies,
+        leagueMax: 1600,
+        rank: guest.rank,
+        chestWins: 0,
+        chestTarget: 10,
+        chestLevel: 1,
+      }
+    : world.profile;
+  const empireAxols = isGuest ? guest.axols : world.axols;
   const [rightTab, setRightTab] = useState<RightTab>("history");
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(p.empireName);
 
   const stats = useMemo(() => {
-    const gens = world.axols.map((a) => a.generation);
-    const wins = Math.max(52, world.quests.wins);
+    const gens = empireAxols.map((a) => a.generation);
+    const wins = isGuest ? guest!.wins : world.quests.wins;
     return {
-      axols: Math.max(14, world.axols.length),
+      axols: empireAxols.length,
       wins,
-      highestGen: gens.length ? Math.max(3, Math.max(...gens)) : 3,
-      hasCosmic: world.axols.some((a) => a.rarity === "Cosmic"),
+      highestGen: gens.length ? Math.max(...gens) : 0,
+      hasCosmic: empireAxols.some((a) => a.rarity === "Cosmic"),
     };
-  }, [world.axols, world.quests.wins]);
+  }, [empireAxols, guest, isGuest, world.quests.wins]);
 
   const chestPct = Math.round((p.chestWins / p.chestTarget) * 100);
   const leaguePct = Math.round((p.trophies / p.leagueMax) * 100);
   const xpPct = Math.round((p.xp / p.xpToNext) * 100);
-
-  const leaderboard = MOCK_LEADERBOARD.map((r) =>
-    r.you ? { ...r, name: `${p.name} (You)`, trophies: p.trophies, avatar: avatarSrc(p.avatarId) } : r,
-  );
+  const pfp = isGuest ? avatarForPlayer(guest!) : avatarSrc(p.avatarId);
 
   return (
     <ScreenShell bg="/empire-bg.png" dark={0.62}>
       <ScreenTop
         world={world}
-        title="EMPIRE HALL"
-        subtitle="Honor your legacy. Inspire your empire."
+        title={isGuest ? `${guest!.name.toUpperCase()}'S EMPIRE` : "EMPIRE HALL"}
+        subtitle={isGuest ? "Visiting another trainer's hall" : "Honor your legacy. Inspire your empire."}
         icon="/icon-empire.png"
       />
+
+      {isGuest ? (
+        <div className="mx-auto max-w-[1500px] px-3 sm:px-5">
+          <button
+            type="button"
+            onClick={() => world.closeVisitedEmpire()}
+            className="mb-3 rounded-full border border-white/15 bg-ink-900/70 px-4 py-1.5 font-display text-[0.72rem] font-extrabold text-white/80 transition hover:bg-white/10"
+          >
+            ← Back to your Empire
+          </button>
+        </div>
+      ) : null}
 
       <div className="mx-auto max-w-[1500px] space-y-4 px-3 pb-28 sm:px-5">
         {/* top row: profile + chest */}
         <div className="grid gap-4 lg:grid-cols-12">
           <Panel className="relative overflow-hidden p-4 sm:p-5 lg:col-span-5">
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-brand-500/10 via-transparent to-amber-400/5" />
-            <SectionTitle accent="#c08bff">Your Empire</SectionTitle>
+            <SectionTitle accent="#c08bff">{isGuest ? "Empire Profile" : "Your Empire"}</SectionTitle>
 
             <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start">
               <div className="relative mx-auto shrink-0 sm:mx-0">
                 <span className="absolute -inset-2 rounded-full bg-gradient-to-br from-amber-300/40 to-brand-400/30 blur-md" />
                 <span className="relative grid h-28 w-28 place-items-center overflow-hidden rounded-full border-[3px] border-amber-300/50 bg-ink-900/80 shadow-glow sm:h-32 sm:w-32">
-                  <img src={avatarSrc(p.avatarId)} alt="" className="h-full w-full scale-110 object-cover" draggable={false} />
+                  <img src={pfp} alt="" className="h-full w-full scale-110 object-cover" draggable={false} />
                 </span>
                 <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full border border-amber-300/40 bg-ink-900/90 px-2.5 py-0.5 font-display text-[0.66rem] font-extrabold text-amber-200">
                   Lv. {p.level}
@@ -66,7 +94,7 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
               </div>
 
               <div className="min-w-0 flex-1 text-center sm:text-left">
-                {editingName ? (
+                {!isGuest && editingName ? (
                   <form
                     className="flex items-center gap-2"
                     onSubmit={(e) => {
@@ -87,11 +115,12 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => { setNameDraft(p.empireName); setEditingName(true); }}
-                    className="group flex items-center justify-center gap-2 sm:justify-start"
+                    onClick={() => { if (!isGuest) { setNameDraft(p.empireName); setEditingName(true); } }}
+                    className={`group flex items-center justify-center gap-2 sm:justify-start ${isGuest ? "cursor-default" : ""}`}
+                    disabled={isGuest}
                   >
                     <h2 className="font-display text-xl font-extrabold text-white sm:text-2xl">{p.empireName}</h2>
-                    <span className="rounded-lg bg-white/10 px-1.5 py-0.5 text-[0.62rem] text-white/50 transition group-hover:bg-white/20">✎</span>
+                    {!isGuest ? <span className="rounded-lg bg-white/10 px-1.5 py-0.5 text-[0.62rem] text-white/50 transition group-hover:bg-white/20">✎</span> : null}
                   </button>
                 )}
 
@@ -165,40 +194,18 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
         <div className="grid gap-4 lg:grid-cols-12">
           {/* leaderboard */}
           <Panel className="p-4 lg:col-span-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <SectionTitle accent="#ffd24a">Leaderboard</SectionTitle>
-              <span className="text-[0.58rem] font-bold text-white/45">Refreshes in: 12h 45m</span>
-            </div>
-            <div className="mb-3 flex gap-1 rounded-full border border-white/10 bg-black/30 p-1">
-              {(["global", "friends", "empire"] as LbTab[]).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setLbTab(t)}
-                  className={`flex-1 rounded-full py-1.5 font-display text-[0.62rem] font-extrabold uppercase tracking-wide transition ${
-                    lbTab === t ? "bg-brand-500 text-white shadow-glow" : "text-white/50 hover:text-white/80"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-            <div className="space-y-1.5">
-              {leaderboard.map((row) => (
-                <div
-                  key={row.rank}
-                  className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 ${
-                    row.you ? "border-brand-400/40 bg-brand-500/15" : "border-white/8 bg-white/[0.03]"
-                  }`}
-                >
-                  <RankBadge rank={row.rank} />
-                  <img src={row.avatar} alt="" className="h-8 w-8 rounded-full object-cover ring-1 ring-white/20" draggable={false} />
-                  <span className="flex-1 truncate font-display text-[0.78rem] font-extrabold text-white">{row.name}</span>
-                  <span className="text-[0.66rem] font-bold text-amber-200">{row.trophies.toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-            <button type="button" onClick={() => world.toast("Full leaderboard coming soon!")} className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 font-display text-[0.72rem] font-extrabold text-white/70 transition hover:bg-white/10">
+            <LeaderboardPanel
+              youWallet={world.walletAddress}
+              youName={world.profile.name}
+              youTrophies={world.profile.trophies}
+              youAvatar={avatarSrc(world.profile.avatarId)}
+              onVisit={world.visitEmpire}
+            />
+            <button
+              type="button"
+              onClick={() => world.openLeaderboard()}
+              className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 font-display text-[0.72rem] font-extrabold text-white/70 transition hover:bg-white/10"
+            >
               View Full Leaderboard
             </button>
           </Panel>
@@ -305,6 +312,28 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
             </button>
           </Panel>
         </div>
+
+        {/* trainer's solaxies */}
+        <Panel className="p-4">
+          <SectionTitle accent="#54e07a">{isGuest ? `${guest!.name}'s Solaxies` : "Your Solaxies"}</SectionTitle>
+          {empireAxols.length === 0 ? (
+            <p className="mt-4 py-6 text-center text-[0.72rem] text-white/50">No Solaxies in this pond yet.</p>
+          ) : (
+            <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+              {[...empireAxols].sort((a, b) => b.level - a.level).map((a) => (
+                <div
+                  key={a.id}
+                  className="rounded-2xl border border-white/10 bg-black/30 p-2 text-center"
+                  style={{ boxShadow: `inset 0 0 16px ${CLASS_META[a.cls].color}18` }}
+                >
+                  <img src={axolSprite(a)} alt="" className="mx-auto h-14 w-14 object-contain" draggable={false} />
+                  <div className="mt-1 truncate font-display text-[0.62rem] font-extrabold text-white">{CLASS_META[a.cls].name}</div>
+                  <div className="text-[0.52rem] font-bold text-white/45">Lv.{a.level} · {a.rarity}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
       </div>
     </ScreenShell>
   );

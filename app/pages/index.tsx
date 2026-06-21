@@ -40,9 +40,13 @@ import {
 import { createChainClient } from "@/lib/chain";
 import { fetchGlobalFeed, postGlobalFeed } from "@/lib/global-feed";
 import { recordEconomy as postEconomyStats } from "@/lib/global-stats";
+import { fetchPublicPlayer, syncPublicPlayer } from "@/lib/global-players";
 import { sfx } from "@/lib/sfx";
 import { BreedModal, UsernameModal } from "@/components/world/modals";
 import { SpendBurnMeter } from "@/components/world/SpendBurnMeter";
+import { LeaderboardModal } from "@/components/world/LeaderboardPanel";
+import { avatarSrc } from "@/lib/profile";
+import type { PublicPlayer } from "@/lib/public-player";
 import Atmosphere from "@/components/world/Atmosphere";
 import type { Screen, WorldApi } from "@/components/world/world";
 import CollectionScreen from "@/components/world/screens/CollectionScreen";
@@ -188,8 +192,11 @@ export default function World() {
   const battleId = useRef(1);
   const [quests, setQuests] = useState({ rolls: 0, breeds: 0, wins: 0 });
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [viewingPlayer, setViewingPlayer] = useState<PublicPlayer | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toast = useCallback((msg: string) => {
     setToastMsg(msg);
@@ -293,6 +300,24 @@ export default function World() {
     };
   }, [mounted, walletFull, axols, resources, profile, quests, battleHistory, activeId, selectedId]);
 
+  // Sync public profile for global leaderboard & PvP matching.
+  useEffect(() => {
+    if (!mounted || !walletFull || needsUsername(profile)) return;
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => {
+      void syncPublicPlayer({
+        wallet: walletFull,
+        profile,
+        axols,
+        activeId,
+        quests,
+      });
+    }, 800);
+    return () => {
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+    };
+  }, [mounted, walletFull, profile, axols, activeId, quests]);
+
   // Poll the global live feed (shared by all players).
   useEffect(() => {
     if (!wallet) return;
@@ -369,12 +394,12 @@ export default function World() {
     return child;
   };
 
-  const doBattle = async (myId: number) => {
+  const doBattle = async (myId: number, enemyOverride?: Axol) => {
     if (!requireWallet()) return null;
     const mine = axols.find((x) => x.id === myId);
     if (!mine) return null;
     if (resources.energy < COSTS.battle.energy) return null;
-    const enemy = wildAxol(mine);
+    const enemy = enemyOverride ?? wildAxol(mine);
     await chain.battle(myId, enemy.id); // TODO: real battle
     const result: BattleResult = resolveBattle(mine, enemy);
     setResources((r) => ({ ...r, energy: Math.max(0, r.energy - 10), solax: r.solax + result.rewardSolax, dna: r.dna + (result.win ? 5 : 0) }));
@@ -523,6 +548,31 @@ export default function World() {
     }));
     toast(`Welcome, ${name}!`);
     announceFeed("joined Solaxie!", "#c08bff");
+    if (walletFull) {
+      void syncPublicPlayer({
+        wallet: walletFull,
+        profile: { ...profileRef.current, name, empireName: `${base} Empire`, usernameSet: true },
+        axols,
+        activeId,
+        quests,
+      });
+    }
+  };
+
+  const visitEmpire = (targetWallet: string) => {
+    if (walletFull && targetWallet === walletFull) {
+      setViewingPlayer(null);
+      setScreen("empire");
+      return;
+    }
+    void fetchPublicPlayer(targetWallet).then((p) => {
+      if (!p) {
+        toast("Trainer not found.");
+        return;
+      }
+      setViewingPlayer(p);
+      setScreen("empire");
+    });
   };
 
   const world: WorldApi = {
@@ -596,6 +646,10 @@ export default function World() {
     doRoll,
     doBreed,
     doBattle,
+    visitEmpire,
+    closeVisitedEmpire: () => setViewingPlayer(null),
+    viewingPlayer,
+    openLeaderboard: () => setLeaderboardOpen(true),
     purchase,
     addAxol,
     feedAxol,
@@ -701,6 +755,16 @@ export default function World() {
       {breedOpen && <BreedModal axols={axols} resources={resources} onBreed={doBreed} onClose={() => setBreedOpen(false)} />}
 
       {needsUsername(profile) && <UsernameModal onSubmit={setUsername} />}
+
+      <LeaderboardModal
+        open={leaderboardOpen}
+        onClose={() => setLeaderboardOpen(false)}
+        youWallet={walletFull}
+        youName={profile.name}
+        youTrophies={profile.trophies}
+        youAvatar={avatarSrc(profile.avatarId)}
+        onVisit={visitEmpire}
+      />
 
       <Toast msg={toastMsg} />
       <ConnectWalletModal open={walletModalOpen} onClose={() => setWalletModalOpen(false)} onError={toast} />

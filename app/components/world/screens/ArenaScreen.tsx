@@ -12,6 +12,7 @@ import {
   wildAxol,
 } from "@/lib/game";
 import { sfx } from "@/lib/sfx";
+import { fetchBattleOpponent, opponentFromPlayer } from "@/lib/global-players";
 import type { WorldApi } from "../world";
 import { Panel, ScreenShell, ScreenTop, SectionTitle } from "../ScreenChrome";
 
@@ -57,7 +58,17 @@ function rankName(t: number): string {
   return "Silver II";
 }
 
-type Opponent = { name: string; title: string; trophies: number; rank: string; winRate: number; team: Axol[] };
+type Opponent = {
+  name: string;
+  title: string;
+  trophies: number;
+  rank: string;
+  winRate: number;
+  team: Axol[];
+  isReal: boolean;
+  wallet?: string;
+  avatar?: string;
+};
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -116,28 +127,41 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
     setEnemy(null);
     setPhase("searching");
 
-    const out = await world.doBattle(mine.id);
+    const match = await fetchBattleOpponent(world.walletAddress, world.profile.trophies);
+    await delay(900);
+    if (!alive()) return;
+
+    const out = await world.doBattle(mine.id, match?.champion);
     if (!alive()) return;
     if (!out) {
       setPhase("lobby");
       return;
     }
 
-    await delay(1500);
+    await delay(600);
     if (!alive()) return;
 
     const rep = buildReplay(out.mine, out.enemy, out.result.win, items);
-    const et = Math.max(820, trophies + (Math.floor(Math.random() * 130) - 60));
-    const oppName = OPP_NAMES[Math.floor(Math.random() * OPP_NAMES.length)];
+    let opp: Opponent;
+    if (match?.isReal && match.player) {
+      opp = opponentFromPlayer(match.player);
+      world.toast(`Matched vs ${match.player.name} — real trainer!`);
+    } else {
+      const et = Math.max(820, trophies + (Math.floor(Math.random() * 130) - 60));
+      const oppName = OPP_NAMES[Math.floor(Math.random() * OPP_NAMES.length)];
+      opp = {
+        name: oppName,
+        title: "Practice wild — no live trainers matched",
+        trophies: et,
+        rank: rankName(et),
+        winRate: 46 + Math.floor(Math.random() * 28),
+        team: [out.enemy, wildAxol(out.mine), wildAxol(out.mine)],
+        isReal: false,
+      };
+      world.toast("No live trainers in range — practice vs wild Solaxy");
+    }
     setEnemy(out.enemy);
-    setOpponent({
-      name: oppName,
-      title: OPP_TITLES[Math.floor(Math.random() * OPP_TITLES.length)],
-      trophies: et,
-      rank: rankName(et),
-      winRate: 46 + Math.floor(Math.random() * 28),
-      team: [out.enemy, wildAxol(out.mine), wildAxol(out.mine)],
-    });
+    setOpponent(opp);
     setResult(out.result);
     setReplay(rep);
     setMineHp(rep.mineMax);
@@ -179,7 +203,7 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
     setStreak((s) => (out.result.win ? s + 1 : 0));
     setTrophies((t) => Math.max(0, t + (out.result.win ? 8 : -6)));
     world.recordBattle({
-      opponent: oppName,
+      opponent: opp.name,
       win: out.result.win,
       axolName: out.mine.name,
       axolCls: out.mine.cls,
@@ -188,6 +212,12 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
       trophiesDelta: out.result.win ? 8 : -6,
       at: "just now",
     });
+    if (opp.isReal) {
+      world.announceFeed(
+        out.result.win ? `defeated ${opp.name} in the Arena!` : `lost to ${opp.name} in the Arena`,
+        out.result.win ? "#54e07a" : "#ff6b6b",
+      );
+    }
     setPhase("result");
   }
 
@@ -235,6 +265,7 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
           myTeam={team}
           myName={world.profile.name}
           trophies={trophies}
+          onVisitEmpire={world.visitEmpire}
           result={result}
           items={items}
           onAgain={findOpponent}
@@ -246,6 +277,9 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
             <div className="flex justify-center">
               <FindButton onClick={findOpponent} energy={world.resources.energy} />
             </div>
+            <p className="text-center text-[0.68rem] font-bold text-white/55">
+              Battles match <span className="text-brand-200">real trainers</span> — their bred &amp; leveled Solaxies fight back
+            </p>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
               <div className="lg:col-span-4">
                 <RankLadder trophies={trophies} streak={streak} />
@@ -290,6 +324,7 @@ function Stage({
   myTeam,
   myName,
   trophies,
+  onVisitEmpire,
   result,
   items,
   onAgain,
@@ -311,6 +346,7 @@ function Stage({
   myTeam: Axol[];
   myName: string;
   trophies: number;
+  onVisitEmpire: (wallet: string) => void;
   result: BattleResult | null;
   items: string[];
   onAgain: () => void;
@@ -400,7 +436,7 @@ function Stage({
       {/* phase overlays */}
       {phase === "searching" ? <SearchingOverlay trophies={trophies} /> : null}
       {phase === "matched" && enemy && mine && opponent ? (
-        <VersusOverlay mine={mine} myTeam={myTeam} myName={myName} myTrophies={trophies} opponent={opponent} />
+        <VersusOverlay mine={mine} myTeam={myTeam} myName={myName} myTrophies={trophies} opponent={opponent} onVisitEmpire={onVisitEmpire} />
       ) : null}
       {phase === "commencing" ? <CommencingOverlay /> : null}
       {phase === "result" && result ? (
@@ -863,11 +899,10 @@ function SearchingOverlay({ trophies }: { trophies: number }) {
           <span className="h-12 w-12 rotate-45 animate-pulse rounded-md bg-gradient-to-br from-cyan-300 to-fuchsia-500 shadow-[0_0_30px_rgba(180,120,255,0.8)]" />
         </div>
         <div className="mt-5 font-display text-xl font-extrabold tracking-widest text-white">
-          SEARCHING<Dots />
+          FINDING TRAINER<Dots />
         </div>
-        <div className="mt-1 flex items-center gap-2 text-[0.72rem] text-white/60">
-          <img src="/rank-bronze.png" alt="" className="h-5 w-5 object-contain" />
-          Bronze III · {trophies.toLocaleString()} trophies
+        <div className="mt-1 max-w-xs text-[0.72rem] text-white/60">
+          Matching a live player near {trophies.toLocaleString()} trophies — their bred team loads if found
         </div>
       </div>
     </div>
@@ -884,15 +919,38 @@ function Dots() {
   );
 }
 
-function VersusOverlay({ mine, myTeam, myName, myTrophies, opponent }: { mine: Axol; myTeam: Axol[]; myName: string; myTrophies: number; opponent: Opponent }) {
+function VersusOverlay({
+  mine,
+  myTeam,
+  myName,
+  myTrophies,
+  opponent,
+  onVisitEmpire,
+}: {
+  mine: Axol;
+  myTeam: Axol[];
+  myName: string;
+  myTrophies: number;
+  opponent: Opponent;
+  onVisitEmpire: (wallet: string) => void;
+}) {
   return (
     <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center px-2">
       <span className="absolute inset-0 bg-gradient-to-r from-fuchsia-900/45 via-ink-900/20 to-cyan-900/45" />
       <span className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 animate-shockwave rounded-full border-2 border-white/40" />
       <div className="relative flex w-full max-w-2xl flex-col items-center">
         <div className="animate-bannerin rounded-full bg-amber-400 px-5 py-1 font-display text-sm font-extrabold tracking-[0.25em] text-ink-900 shadow-glow">
-          MATCH FOUND
+          {opponent.isReal ? "LIVE TRAINER MATCH" : "PRACTICE MATCH"}
         </div>
+        {opponent.isReal ? (
+          <div className="mt-2 rounded-full border border-emerald-400/40 bg-emerald-500/15 px-3 py-0.5 text-[0.58rem] font-extrabold uppercase tracking-widest text-emerald-300">
+            Real player · their bred &amp; leveled Solaxies
+          </div>
+        ) : (
+          <div className="mt-2 rounded-full border border-white/15 bg-white/5 px-3 py-0.5 text-[0.58rem] font-bold text-white/50">
+            Wild Solaxy — not a live trainer
+          </div>
+        )}
         <div className="mt-3 flex w-full items-stretch justify-center gap-2 sm:gap-3">
           <div className="flex-1 animate-slideinl">
             <ProfileCard name={myName} title="That's you" rank={rankName(myTrophies)} trophies={myTrophies} team={myTeam} side="left" you />
@@ -900,8 +958,18 @@ function VersusOverlay({ mine, myTeam, myName, myTrophies, opponent }: { mine: A
           <div className="flex items-center">
             <span className="animate-starpop font-display text-4xl font-black text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.9)] sm:text-6xl">VS</span>
           </div>
-          <div className="flex-1 animate-slideinr">
-            <ProfileCard name={opponent.name} title={opponent.title} rank={opponent.rank} trophies={opponent.trophies} winRate={opponent.winRate} team={opponent.team} side="right" />
+          <div className="pointer-events-auto flex-1 animate-slideinr">
+            <ProfileCard
+              name={opponent.name}
+              title={opponent.title}
+              rank={opponent.rank}
+              trophies={opponent.trophies}
+              winRate={opponent.winRate}
+              team={opponent.team}
+              side="right"
+              avatar={opponent.avatar}
+              onClick={opponent.isReal && opponent.wallet ? () => onVisitEmpire(opponent.wallet!) : undefined}
+            />
           </div>
         </div>
       </div>
@@ -909,12 +977,40 @@ function VersusOverlay({ mine, myTeam, myName, myTrophies, opponent }: { mine: A
   );
 }
 
-function ProfileCard({ name, title, rank, trophies, winRate, team, side, you }: { name: string; title: string; rank: string; trophies: number; winRate?: number; team: Axol[]; side: "left" | "right"; you?: boolean }) {
+function ProfileCard({
+  name,
+  title,
+  rank,
+  trophies,
+  winRate,
+  team,
+  side,
+  you,
+  avatar,
+  onClick,
+}: {
+  name: string;
+  title: string;
+  rank: string;
+  trophies: number;
+  winRate?: number;
+  team: Axol[];
+  side: "left" | "right";
+  you?: boolean;
+  avatar?: string;
+  onClick?: () => void;
+}) {
+  const Wrapper = onClick ? "button" : "div";
   return (
-    <div className={`rounded-2xl border bg-ink-900/85 p-3 backdrop-blur ${you ? "border-emerald-400/40" : "border-rose-400/40"}`} style={{ boxShadow: `0 0 30px ${you ? "rgba(84,224,122,0.25)" : "rgba(255,95,109,0.25)"}` }}>
+    <Wrapper
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={`rounded-2xl border bg-ink-900/85 p-3 backdrop-blur text-left w-full ${you ? "border-emerald-400/40" : "border-rose-400/40"} ${onClick ? "pointer-events-auto transition hover:border-brand-400/50 hover:bg-ink-900/95" : ""}`}
+      style={{ boxShadow: `0 0 30px ${you ? "rgba(84,224,122,0.25)" : "rgba(255,95,109,0.25)"}` }}
+    >
       <div className={`flex items-center gap-2 ${side === "right" ? "flex-row-reverse text-right" : ""}`}>
         <span className="h-12 w-12 shrink-0 overflow-hidden rounded-full ring-2 ring-white/20">
-          <img src="/avatar-axolotl.png" alt="" className="h-full w-full scale-110 object-cover" />
+          <img src={avatar ?? "/avatar-axolotl.png"} alt="" className="h-full w-full scale-110 object-cover" />
         </span>
         <div className={side === "right" ? "text-right" : ""}>
           <div className="font-display text-sm font-extrabold text-white">{name}</div>
@@ -936,7 +1032,7 @@ function ProfileCard({ name, title, rank, trophies, winRate, team, side, you }: 
           </span>
         ))}
       </div>
-    </div>
+    </Wrapper>
   );
 }
 
