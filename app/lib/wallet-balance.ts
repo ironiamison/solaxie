@@ -80,6 +80,19 @@ export async function findSolaxTokenAccount(
     }
   }
 
+  if (!best) {
+    try {
+      const byMintOnly = await connection.getParsedTokenAccountsByOwner(owner, { mint: TOKEN_MINT });
+      for (const entry of byMintOnly.value as ParsedTokenAccountEntry[]) {
+        const info = entry.account.data.parsed.info;
+        if (info.mint !== TOKEN_MINT.toBase58()) continue;
+        consider(entry.pubkey, uiFromTokenAmount(info.tokenAmount));
+      }
+    } catch (e) {
+      console.warn("[wallet-balance] mint-only scan", e);
+    }
+  }
+
   if (best) return best;
 
   try {
@@ -101,4 +114,34 @@ export async function fetchWalletSolaxBalance(
 ): Promise<number> {
   const found = await findSolaxTokenAccount(connection, owner);
   return found?.balance ?? 0;
+}
+
+export type SolaxTokenAccount = { account: PublicKey; balance: number };
+
+/** Client + server fallback — spend flows need the token account pubkey, not just HUD balance. */
+export async function resolveSolaxTokenAccount(
+  connection: Connection,
+  owner: PublicKey,
+): Promise<SolaxTokenAccount | null> {
+  const local = await findSolaxTokenAccount(connection, owner).catch(() => null);
+
+  let remote: SolaxTokenAccount | null = null;
+  if (typeof fetch !== "undefined") {
+    try {
+      const res = await fetch(`/api/solax-account?wallet=${owner.toBase58()}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = (await res.json()) as { account?: string; balance?: number };
+        if (data.account && typeof data.balance === "number" && data.balance > 0) {
+          remote = { account: new PublicKey(data.account), balance: data.balance };
+        }
+      }
+    } catch {
+      // API optional
+    }
+  }
+
+  if (local && remote) {
+    return local.balance >= remote.balance ? local : remote;
+  }
+  return local ?? remote;
 }

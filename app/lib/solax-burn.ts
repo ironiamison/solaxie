@@ -16,7 +16,7 @@ import {
   TOKEN_PROGRAM_FOR_MINT,
 } from "@/utils/anchor";
 import { solaxPriceToBaseUnits } from "@/lib/token";
-import { findSolaxTokenAccount } from "@/lib/wallet-balance";
+import { findSolaxTokenAccount, resolveSolaxTokenAccount, type SolaxTokenAccount } from "@/lib/wallet-balance";
 import { sendWalletTransaction } from "@/lib/wallet-tx";
 import type { WalletContextState } from "@solana/wallet-adapter-react";
 
@@ -40,6 +40,7 @@ export async function transferSolaxToBurnWallet(
   connection: Connection,
   wallet: Pick<WalletContextState, "publicKey" | "sendTransaction" | "signTransaction">,
   priceWhole: number,
+  sourceOverride?: SolaxTokenAccount,
 ): Promise<TransactionSignature> {
   const owner = wallet.publicKey;
   if (!owner) throw new Error("Wallet not connected");
@@ -47,7 +48,7 @@ export async function transferSolaxToBurnWallet(
   const amount = solaxPriceToBaseUnits(priceWhole, TOKEN_DECIMALS);
   if (amount <= BigInt(0)) throw new Error("Invalid burn amount");
 
-  const sourceInfo = await findSolaxTokenAccount(connection, owner);
+  const sourceInfo = sourceOverride ?? (await resolveSolaxTokenAccount(connection, owner));
   if (!sourceInfo) {
     throw new Error("No SOLAX in wallet — buy SOLAX on pump.fun first");
   }

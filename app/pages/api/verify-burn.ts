@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { verifySolaxBurnTransfer } from "@/lib/solax-burn";
-import { RPC_URL } from "@/utils/anchor";
+import { serverRpcUrls } from "@/lib/rpc-balance";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader("Cache-Control", "no-store");
@@ -23,9 +23,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const owner = new PublicKey(wallet);
-    const connection = new Connection(RPC_URL, "confirmed");
-    const verified = await verifySolaxBurnTransfer(connection, signature, owner, amount);
-    return res.status(200).json({ verified, signature });
+    for (const url of serverRpcUrls()) {
+      try {
+        const connection = new Connection(url, "confirmed");
+        const verified = await verifySolaxBurnTransfer(connection, signature, owner, amount);
+        if (verified) return res.status(200).json({ verified: true, signature });
+      } catch {
+        // try next RPC
+      }
+    }
+    return res.status(200).json({ verified: false, signature });
   } catch {
     return res.status(400).json({ error: "verification failed", verified: false });
   }

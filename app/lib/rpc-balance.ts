@@ -1,5 +1,5 @@
 import { Connection, PublicKey } from "@solana/web3.js";
-import { fetchWalletSolaxBalance } from "./wallet-balance";
+import { fetchWalletSolaxBalance, findSolaxTokenAccount } from "./wallet-balance";
 
 /** RPC endpoints for server-side reads — tries each until balance found. */
 export function serverRpcUrls(): string[] {
@@ -14,15 +14,23 @@ export function serverRpcUrls(): string[] {
 
 /** Read SOLAX balance on the server with RPC fallbacks. */
 export async function fetchServerSolaxBalance(owner: PublicKey): Promise<number> {
-  let best = 0;
+  const found = await fetchServerSolaxTokenAccount(owner);
+  return found?.balance ?? 0;
+}
+
+/** Find the SPL token account + balance on the server (reliable for Token-2022). */
+export async function fetchServerSolaxTokenAccount(
+  owner: PublicKey,
+): Promise<{ account: PublicKey; balance: number } | null> {
+  let best: { account: PublicKey; balance: number } | null = null;
   for (const url of serverRpcUrls()) {
     try {
       const connection = new Connection(url, "confirmed");
-      const bal = await fetchWalletSolaxBalance(connection, owner);
-      if (bal > best) best = bal;
-      if (best > 0) return best;
+      const found = await findSolaxTokenAccount(connection, owner);
+      if (found && (!best || found.balance > best.balance)) best = found;
+      if (best && best.balance > 0) return best;
     } catch (e) {
-      console.warn("[rpc-balance]", url.slice(0, 40), e);
+      console.warn("[rpc-balance] account", url.slice(0, 40), e);
     }
   }
   return best;

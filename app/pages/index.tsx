@@ -87,7 +87,7 @@ import {
   transferSolaxToBurnWallet,
   verifySolaxBurnTransfer,
 } from "@/lib/solax-burn";
-import { fetchWalletSolaxBalance, findSolaxTokenAccount } from "@/lib/wallet-balance";
+import { fetchWalletSolaxBalance, resolveSolaxTokenAccount } from "@/lib/wallet-balance";
 import { PublicKey, type Connection } from "@solana/web3.js";
 import {
   applyProgressEvent,
@@ -770,34 +770,22 @@ export default function World() {
         return false;
       }
       try {
-        const held = await findSolaxTokenAccount(connection, publicKey);
+        const held = await resolveSolaxTokenAccount(connection, publicKey);
         const chainBal = held?.balance ?? 0;
-        const displayBal = Math.max(chainBal, resourcesRef.current.solax);
-        setResources((r) => ({ ...r, solax: displayBal }));
+        setResources((r) => ({ ...r, solax: Math.max(chainBal, r.solax) }));
 
-        if (chainBal > 0 && chainBal < cost) {
+        if (!held || chainBal < cost) {
           toast(
-            `Need ${cost.toLocaleString()} SOLAX in wallet (you have ${Math.floor(chainBal).toLocaleString()})`,
+            held
+              ? `Need ${cost.toLocaleString()} SOLAX in wallet (you have ${Math.floor(chainBal).toLocaleString()})`
+              : "No SOLAX token account found — refresh or reconnect wallet",
             { critical: true },
           );
           return false;
         }
-        if (chainBal <= 0 && displayBal < cost) {
-          toast("Checking wallet… try again in a moment.", { critical: true });
-          const retry = await findSolaxTokenAccount(connection, publicKey);
-          if (!retry || retry.balance < cost) {
-            toast(
-              retry
-                ? `Need ${cost.toLocaleString()} SOLAX (you have ${Math.floor(retry.balance).toLocaleString()})`
-                : "No SOLAX found — buy on pump.fun first",
-              { critical: true },
-            );
-            return false;
-          }
-        }
 
         toast("Confirm SOLAX transfer in your wallet…", { critical: true });
-        const sig = await transferSolaxToBurnWallet(connection, signer, cost);
+        const sig = await transferSolaxToBurnWallet(connection, signer, cost, held);
 
         let verified = await verifySolaxBurnTransfer(connection, sig, publicKey, cost);
         if (!verified) {
