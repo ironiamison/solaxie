@@ -330,14 +330,21 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
               <span className="rounded-full bg-cyan-500/20 px-2.5 py-0.5 font-display text-[0.68rem] font-extrabold uppercase tracking-wide text-cyan-200">
                 Version 1.3
               </span>
-              <span className="text-[0.62rem] font-bold uppercase tracking-wide text-white/40">Coming soon</span>
+              <span className="text-[0.62rem] font-bold uppercase tracking-wide text-emerald-300/80">Live now</span>
             </div>
+            <p className="mb-2 text-[0.72rem] text-white/55">Season 1: Classified — new elements, player trading, friends, and Empire progression.</p>
             <ul className="list-inside list-disc space-y-1.5 text-[0.74rem] text-white/70">
-              <li><b className="text-white">Classic dex art pass</b> — replace color-filter echoes on the original 6 elements with unique illustrated sprites per form (same quality as Primal lines). Filters let us ship 85 forms fast; v1.3 makes every entry feel collectible.</li>
-              <li><b className="text-white">Classified Solaxies</b> — unlock Zephyr, Nocturne, Mycelium, Solara, Glacier, and Mirage as a new season drop.</li>
-              <li><b className="text-white">Player-to-player trading</b> — list and buy Solaxies from other trainers at the Harbor.</li>
-              <li><b className="text-white">Friends list</b> — follow trainers and see when they&apos;re in the Arena.</li>
-              <li><b className="text-white">Full battle log &amp; achievements</b> — complete history and badge hall in Empire.</li>
+              <li><b className="text-white">Classified Solaxies</b> — Zephyr, Nocturne, Mycelium, Solara, Glacier, and Mirage drop from DNA Core during Season 1.</li>
+              <li><b className="text-white">Season 1 banner</b> — countdown, ticket share estimate, and live economy ticker on Empire.</li>
+              <li><b className="text-white">Player-to-player trading</b> — list Solaxies from Collection; buy at Harbor → Player Market tab.</li>
+              <li><b className="text-white">Friends list</b> — follow trainers from Global leaderboard; see friends in Empire.</li>
+              <li><b className="text-white">Battle log &amp; achievements</b> — full history modal and badge hall in Empire.</li>
+              <li><b className="text-white">Hall of Legends</b> — dynamic slots from your roster stats.</li>
+              <li><b className="text-white">Classic dex art pass</b> — per-element hue pipelines for unique Rare/Epic/Legendary echoes (<code className="text-cyan-200/80">npm run generate:dex</code>).</li>
+              <li><b className="text-white">Dex completion rewards</b> — +2 eggs &amp; +120 tickets for unlocking every form in an element line.</li>
+              <li><b className="text-white">Friend challenge duels</b> — ⚔ from Empire Hall or leaderboard to fight a followed trainer in Arena.</li>
+              <li><b className="text-white">Market watch alerts</b> — toast when friends list or a watched class hits Player Market.</li>
+              <li><b className="text-white">Global ticket leaderboard</b> — live season ticket totals and estimated creator-reward share on Empire.</li>
             </ul>
           </div>
 

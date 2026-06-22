@@ -1,16 +1,19 @@
 import { useMemo, useState } from "react";
-import { CLASS_META, axolSprite } from "@/lib/game";
-import {
-  MOCK_EMPIRE_FEED,
-  MOCK_LEGENDS,
-  avatarSrc,
-} from "@/lib/profile";
+import { CLASS_META } from "@/lib/game";
+import { AxolSpriteImg, ClassSpriteImg } from "../primitives";
+import { legendsFromAxols } from "@/lib/achievements";
+import { avatarSrc } from "@/lib/profile";
 import type { PublicPlayer } from "@/lib/public-player";
 import { avatarForPlayer } from "@/lib/public-player";
 import { LeaderboardPanel } from "../LeaderboardPanel";
 import { leagueTierProgress } from "@/lib/profile";
 import type { WorldApi } from "../world";
 import { Panel, ScreenShell, ScreenTop, SectionTitle } from "../ScreenChrome";
+import { SeasonBanner } from "../SeasonBanner";
+import { EconomyTicker } from "../EconomyTicker";
+import { AchievementsPanel } from "../AchievementsPanel";
+import { BattleLogModal } from "../BattleLogModal";
+import { TicketLeaderboardPanel } from "../TicketLeaderboardPanel";
 
 type RightTab = "achievements" | "history";
 
@@ -37,19 +40,25 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
     : world.profile;
   const empireAxols = isGuest ? guest.axols : world.axols;
   const [rightTab, setRightTab] = useState<RightTab>("history");
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(p.empireName);
 
   const stats = useMemo(() => {
     const gens = empireAxols.map((a) => a.generation);
-    const wins = isGuest ? guest!.wins : world.quests.wins;
+    const wins = isGuest ? guest!.wins : world.battleHistory.filter((b) => b.win).length || world.quests.wins;
     return {
       axols: empireAxols.length,
       wins,
       highestGen: gens.length ? Math.max(...gens) : 0,
       hasCosmic: empireAxols.some((a) => a.rarity === "Cosmic"),
     };
-  }, [empireAxols, guest, isGuest, world.quests.wins]);
+  }, [empireAxols, guest, isGuest, world.battleHistory, world.quests.wins]);
+
+  const legends = useMemo(
+    () => legendsFromAxols(empireAxols, stats.wins),
+    [empireAxols, stats.wins],
+  );
 
   const chestPct = Math.round((p.chestWins / p.chestTarget) * 100);
   const leaguePct = Math.round(leagueTierProgress(p.trophies).pct);
@@ -78,6 +87,13 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
       ) : null}
 
       <div className="mx-auto max-w-[1500px] space-y-4 px-3 pb-28 sm:px-5">
+        {!isGuest ? (
+          <>
+            <SeasonBanner world={world} />
+            <EconomyTicker />
+          </>
+        ) : null}
+
         {/* top row: profile + chest */}
         <div className="grid gap-4 lg:grid-cols-12">
           <Panel className="relative overflow-hidden p-4 sm:p-5 lg:col-span-5">
@@ -131,6 +147,25 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
                   <MiniStat icon="/icon-collection.png" value={String(stats.axols)} label="Solaxies Owned" />
                   <MiniStat icon="/icon-shrine.png" value={String(stats.highestGen)} label="Highest Gen" />
                 </div>
+
+                {isGuest && guest ? (
+                  <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
+                    <button
+                      type="button"
+                      onClick={() => void world.challengeTrainer(guest.wallet)}
+                      className="rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 px-4 py-2 font-display text-[0.68rem] font-extrabold uppercase tracking-wide text-white shadow-glow"
+                    >
+                      ⚔ Challenge to Arena
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void world.followTrainer(guest.wallet, "follow")}
+                      className="rounded-xl border border-brand-400/40 bg-brand-500/15 px-4 py-2 font-display text-[0.68rem] font-extrabold uppercase tracking-wide text-brand-200"
+                    >
+                      + Follow
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -164,11 +199,11 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
 
             <div className="mt-3 rounded-2xl border border-violet-400/20 bg-violet-500/5 p-3">
               <div className="mb-1 flex justify-between text-[0.6rem] font-bold text-white/55">
-                <span>Activity tickets · tracking live</span>
+                <span>Activity tickets · Season 1</span>
                 <span className="text-violet-200">{(p.activityTickets ?? 0).toLocaleString()}</span>
               </div>
               <p className="text-[0.58rem] leading-snug text-white/45">
-                Tickets stack as you play. Season payouts + ticket leaderboard ship with SOLAX launch.
+                Tickets stack from every action. Creator-reward share calculated at season end from pump.fun fees.
               </p>
             </div>
           </Panel>
@@ -202,9 +237,12 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
           </Panel>
         </div>
 
+        {!isGuest ? (
+          <TicketLeaderboardPanel world={world} />
+        ) : null}
+
         {/* bottom row */}
         <div className="grid gap-4 lg:grid-cols-12">
-          {/* leaderboard */}
           <Panel className="p-4 lg:col-span-4">
             <LeaderboardPanel
               youWallet={world.walletAddress}
@@ -212,6 +250,9 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
               youTrophies={world.profile.trophies}
               youAvatar={avatarSrc(world.profile.avatarId)}
               onVisit={world.visitEmpire}
+              friends={world.friends}
+              onFollow={world.followTrainer}
+              onChallenge={(w) => void world.challengeTrainer(w)}
             />
             <button
               type="button"
@@ -222,11 +263,10 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
             </button>
           </Panel>
 
-          {/* hall of legends */}
           <Panel className="p-4 lg:col-span-4">
             <SectionTitle accent="#c08bff">Hall of Legends</SectionTitle>
             <div className="mt-3 grid grid-cols-5 gap-1.5 sm:gap-2">
-              {MOCK_LEGENDS.map((leg) => (
+              {legends.map((leg) => (
                 <div key={leg.title} className="flex flex-col items-center text-center">
                   <div
                     className="grid h-14 w-full place-items-center rounded-xl border border-white/10 bg-black/30 sm:h-16"
@@ -240,12 +280,8 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
                 </div>
               ))}
             </div>
-            <button type="button" onClick={() => world.toast("Hall of Legends — track season records in Empire Hall")} className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 font-display text-[0.72rem] font-extrabold text-white/70 transition hover:bg-white/10">
-              View All Legends
-            </button>
           </Panel>
 
-          {/* achievements + battle history */}
           <Panel className="p-4 lg:col-span-4">
             <div className="mb-3 flex gap-1 rounded-full border border-white/10 bg-black/30 p-1">
               <button
@@ -269,19 +305,11 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
             </div>
 
             {rightTab === "achievements" ? (
-              <div className="space-y-2">
-                {MOCK_EMPIRE_FEED.map((f) => (
-                  <div key={f.id} className="flex items-center gap-2.5 rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-2">
-                    <img src={f.icon} alt="" className="h-8 w-8 object-contain" draggable={false} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[0.72rem] text-white/90">
-                        <b className="text-brand-200">{f.who}</b> {f.what}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-[0.55rem] text-white/40">{f.t}</span>
-                  </div>
-                ))}
-              </div>
+              isGuest ? (
+                <p className="py-6 text-center text-[0.68rem] text-white/45">Achievements are private to each trainer.</p>
+              ) : (
+                <AchievementsPanel world={world} />
+              )
             ) : (
               <div className="space-y-2">
                 {world.battleHistory.length === 0 ? (
@@ -289,9 +317,11 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
                     <img src="/icon-arena.png" alt="" className="mx-auto mb-2 h-10 w-10 opacity-40" />
                     <p className="font-display text-sm font-extrabold text-white/70">No battles yet</p>
                     <p className="mt-1 text-[0.66rem] text-white/45">Fight in the Arena to build your history</p>
-                    <button type="button" onClick={() => world.setScreen("battle")} className="mt-3 rounded-full bg-brand-500 px-4 py-1.5 font-display text-[0.72rem] font-extrabold text-white">
-                      Go to Arena
-                    </button>
+                    {!isGuest ? (
+                      <button type="button" onClick={() => world.setScreen("battle")} className="mt-3 rounded-full bg-brand-500 px-4 py-1.5 font-display text-[0.72rem] font-extrabold text-white">
+                        Go to Arena
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
                   world.battleHistory.slice(0, 8).map((b) => (
@@ -299,11 +329,9 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
                       <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[0.62rem] font-black ${b.win ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"}`}>
                         {b.win ? "W" : "L"}
                       </span>
-                      <img src={CLASS_META[b.axolCls].sprite} alt="" className="h-7 w-7 object-contain" draggable={false} />
+                      <ClassSpriteImg cls={b.axolCls} alt="" className="h-7 w-7 object-contain" />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-display text-[0.72rem] font-extrabold text-white">
-                          vs {b.opponent}
-                        </p>
+                        <p className="truncate font-display text-[0.72rem] font-extrabold text-white">vs {b.opponent}</p>
                         <p className="text-[0.58rem] text-white/50">
                           {b.axolName} · {b.win ? `+${b.rewardXp} XP · +5 DNA` : "Defeat"}
                         </p>
@@ -315,17 +343,18 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={() => world.toast(rightTab === "achievements" ? "Achievements hall — coming in Version 1.3" : "Full battle log — coming in Version 1.3")}
-              className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 font-display text-[0.72rem] font-extrabold text-white/70 transition hover:bg-white/10"
-            >
-              View All
-            </button>
+            {rightTab === "history" && world.battleHistory.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(true)}
+                className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 font-display text-[0.72rem] font-extrabold text-white/70 transition hover:bg-white/10"
+              >
+                View All ({world.battleHistory.length})
+              </button>
+            ) : null}
           </Panel>
         </div>
 
-        {/* trainer's solaxies */}
         <Panel className="p-4">
           <SectionTitle accent="#54e07a">{isGuest ? `${guest!.name}'s Solaxies` : "Your Solaxies"}</SectionTitle>
           {empireAxols.length === 0 ? (
@@ -338,7 +367,7 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
                   className="rounded-2xl border border-white/10 bg-black/30 p-2 text-center"
                   style={{ boxShadow: `inset 0 0 16px ${CLASS_META[a.cls].color}18` }}
                 >
-                  <img src={axolSprite(a)} alt="" className="mx-auto h-14 w-14 object-contain" draggable={false} />
+                  <AxolSpriteImg axol={a} alt="" className="mx-auto h-14 w-14 object-contain" />
                   <div className="mt-1 truncate font-display text-[0.62rem] font-extrabold text-white">{CLASS_META[a.cls].name}</div>
                   <div className="text-[0.52rem] font-bold text-white/45">Lv.{a.level} · {a.rarity}</div>
                 </div>
@@ -347,6 +376,13 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
           )}
         </Panel>
       </div>
+
+      <BattleLogModal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        history={world.battleHistory}
+        onGoArena={() => { setHistoryOpen(false); world.setScreen("battle"); }}
+      />
     </ScreenShell>
   );
 }
@@ -358,18 +394,5 @@ function MiniStat({ icon, value, label }: { icon: string; value: string; label: 
       <div className="mt-1 font-display text-sm font-extrabold text-white">{value}</div>
       <div className="text-[0.48rem] font-bold uppercase tracking-wide text-white/45">{label}</div>
     </div>
-  );
-}
-
-function RankBadge({ rank }: { rank: number }) {
-  const colors = ["", "#ffd24a", "#c0c0c0", "#cd7f32"];
-  const c = colors[rank] ?? undefined;
-  return (
-    <span
-      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg font-display text-[0.72rem] font-extrabold"
-      style={c ? { background: `${c}22`, color: c, border: `1px solid ${c}55` } : { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}
-    >
-      {rank}
-    </span>
   );
 }

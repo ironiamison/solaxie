@@ -45,12 +45,18 @@ export function avatarForPlayer(p: Pick<PublicPlayer, "avatarId">): string {
     aquatic: "/pfp-aquatic.png",
     beast: "/pfp-beast.png",
     reptile: "/pfp-reptile.png",
-    crystal: "/sprites/crystal.png",
-    shadow: "/sprites/shadow.png",
-    mech: "/sprites/mech.png",
-    ember: "/sprites/ember.png",
-    void: "/sprites/void.png",
-  };
+  crystal: "/sprites/crystal.png",
+  shadow: "/sprites/shadow.png",
+  mech: "/sprites/mech.png",
+  ember: "/sprites/ember.png",
+  void: "/sprites/void.png",
+  zephyr: "/sprites/dex/unreleased-zephyr.png",
+  nocturne: "/sprites/dex/unreleased-nocturne.png",
+  mycelium: "/sprites/dex/unreleased-mycelium.png",
+  solara: "/sprites/dex/unreleased-solara.png",
+  glacier: "/sprites/dex/unreleased-glacier.png",
+  mirage: "/sprites/dex/unreleased-mirage.png",
+};
   return map[p.avatarId] ?? "/avatar-axolotl.png";
 }
 

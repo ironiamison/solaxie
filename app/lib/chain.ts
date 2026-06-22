@@ -20,8 +20,8 @@ import {
   getProgram,
   type PlayerData,
 } from "@/utils/anchor";
+import { spendSolaxViaBurnWallet } from "@/lib/solax-spend";
 import { fetchWalletSolaxBalance } from "@/lib/wallet-balance";
-import { transferSolaxToBurnWallet, verifySolaxBurnTransfer } from "@/lib/solax-burn";
 import { chainAxolToUi } from "@/lib/chain-mapper";
 import type { Axol } from "@/lib/game";
 
@@ -125,13 +125,21 @@ export function createChainClient(
   }
 
   async function burnSolax(priceWhole: number): Promise<string> {
-    const sig = await transferSolaxToBurnWallet(connection, {
-      publicKey: owner,
-      signTransaction: wallet.signTransaction.bind(wallet),
-    }, priceWhole);
-    const ok = await verifySolaxBurnTransfer(connection, sig, owner, priceWhole);
-    if (!ok) throw new Error("SOLAX burn transfer could not be verified");
-    return sig;
+    const result = await spendSolaxViaBurnWallet(
+      connection,
+      {
+        publicKey: owner,
+        sendTransaction:
+          "sendTransaction" in wallet && typeof wallet.sendTransaction === "function"
+            ? wallet.sendTransaction.bind(wallet)
+            : undefined,
+        signTransaction: wallet.signTransaction.bind(wallet),
+      },
+      owner,
+      priceWhole,
+    );
+    if (!result.ok) throw new Error(result.error);
+    return result.signature;
   }
 
   async function ensurePlayer(name: string): Promise<void> {

@@ -4,6 +4,8 @@ import type { PublicPlayer } from "@/lib/public-player";
 import type { PondLayout, PondSpotPct } from "@/lib/pond-layout";
 import type { PondLayouts } from "@/lib/pond-layouts";
 
+import type { FriendRow } from "@/lib/marketplace";
+
 export type Screen = "home" | "collection" | "battle" | "market" | "dnacore" | "empire" | "settings";
 
 export type Quests = { rolls: number; breeds: number; wins: number; claimedDay?: string };
@@ -82,4 +84,23 @@ export type WorldApi = {
   resetPondLayout: () => void;
   /** True when the Anchor program is deployed — core loop uses on-chain txs. */
   chainReady: boolean;
+  /** Deployer demo wallet — unlimited resources, no burns. */
+  demoMode: boolean;
+  /** v1.3 — followed trainers. */
+  friends: FriendRow[];
+  followTrainer: (targetWallet: string, action?: "follow" | "unfollow") => Promise<boolean>;
+  /** List a Solaxy on the player market (listing fee burned). */
+  listSolaxyForSale: (axolId: number, priceSolax: number) => Promise<boolean>;
+  /** Buy a listed Solaxy (price + tax burned). */
+  buyMarketListing: (listingId: string, priceSolax: number) => Promise<boolean>;
+  /** Direct Arena challenge against a trainer (friend duel). */
+  challengeTrainer: (wallet: string) => Promise<boolean>;
+  /** Clears pending challenge after battle starts or is cancelled. */
+  clearChallenge: () => void;
+  pendingChallenge: import("@/lib/public-player").BattleOpponentPayload | null;
+  /** Class filters for Player Market watch alerts. */
+  marketWatches: import("@/lib/game").AxolClass[];
+  toggleMarketWatch: (cls: import("@/lib/game").AxolClass) => void;
+  /** Check dex line completion rewards after roster changes. */
+  checkDexRewards: () => void;
 };

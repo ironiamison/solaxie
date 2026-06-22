@@ -28,6 +28,7 @@ import {
   randomAxol,
   resolveBattle,
   rollRarity,
+  rollSeasonClass,
   seedAxols,
   setIdCounter,
   wildAxol,
@@ -83,12 +84,28 @@ import { ProfileDropdown } from "@/components/world/ProfileDropdown";
 import type { AvatarId, BattleHistoryEntry, TrainerProfile } from "@/lib/profile";
 import { STARTER_PROFILE, needsUsername, normalizeProfile, formatTrainerName } from "@/lib/profile";
 import { applyEggRecoveryAirdrop, applyEnergyRefillAirdrop, applyLaunchAirdrop } from "@/lib/airdrops";
+import { applyDemoResources, isDemoWallet } from "@/lib/demo-wallet";
 import {
-  deserializeBurnTransaction,
-  verifySolaxBurnTransfer,
-} from "@/lib/solax-burn";
+  buyMarketplaceListing,
+  fetchFriendRows,
+  fetchMarketplace,
+  followTrainer as apiFollow,
+  listOnMarketplace,
+  type FriendRow,
+} from "@/lib/marketplace";
+import { isSeasonActive, SEASON_1 } from "@/lib/season";
+import { formatDexRewardToast, pendingDexRewards } from "@/lib/dex-rewards";
+import {
+  alertMessage,
+  detectMarketAlerts,
+  getMarketWatches,
+  toggleMarketWatch as toggleWatchClass,
+} from "@/lib/market-watch";
+import type { AxolClass } from "@/lib/game";
+import { pickChampion, type BattleOpponentPayload } from "@/lib/public-player";
+import { spendSolaxViaBurnWallet } from "@/lib/solax-spend";
+import { phantomMatches } from "@/lib/phantom";
 import { fetchWalletSolaxBalance } from "@/lib/wallet-balance";
-import { sendWalletTransaction } from "@/lib/wallet-tx";
 import { PublicKey, type Connection } from "@solana/web3.js";
 import {
   applyProgressEvent,
@@ -260,6 +277,9 @@ export default function World() {
   } = useWallet();
   const walletAddress = publicKey?.toBase58() ?? null;
   const isLinked = connected && !!walletAddress;
+  const demoMode = useMemo(() => isDemoWallet(walletAddress), [walletAddress]);
+  const demoModeRef = useRef(demoMode);
+  demoModeRef.current = demoMode;
   const [chainReady, setChainReady] = useState(false);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
 
@@ -287,6 +307,8 @@ export default function World() {
   const [profile, setProfile] = useState<TrainerProfile>(STARTER_PROFILE);
   const profileRef = useRef(profile);
   profileRef.current = profile;
+  const axolsRef = useRef(axols);
+  axolsRef.current = axols;
   const [battleHistory, setBattleHistory] = useState<BattleHistoryEntry[]>([]);
   const battleId = useRef(1);
   const [quests, setQuests] = useState<Quests>({ rolls: 0, breeds: 0, wins: 0 });
@@ -296,7 +318,15 @@ export default function World() {
   const [pondArrangeView, setPondArrangeView] = useState<"home" | "collection" | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [friends, setFriends] = useState<FriendRow[]>([]);
   const [viewingPlayer, setViewingPlayer] = useState<PublicPlayer | null>(null);
+  const [pendingChallenge, setPendingChallenge] = useState<BattleOpponentPayload | null>(null);
+  const [marketWatches, setMarketWatchesState] = useState<AxolClass[]>(() =>
+    typeof window !== "undefined" ? getMarketWatches() : [],
+  );
+  const marketSeededRef = useRef(false);
+  const friendsRef = useRef(friends);
+  friendsRef.current = friends;
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -395,6 +425,23 @@ export default function World() {
     return () => window.removeEventListener("solaxie-wallet-error", onWalletError);
   }, [toast]);
 
+  const checkDexRewards = useCallback(() => {
+    const grants = pendingDexRewards(profileRef.current, axolsRef.current);
+    if (!grants.length) return;
+    const eggTotal = grants.reduce((s, g) => s + g.eggs, 0);
+    const ticketTotal = grants.reduce((s, g) => s + g.activityTickets, 0);
+    setResources((r) => ({ ...r, eggs: r.eggs + eggTotal }));
+    setProfile((p) => ({
+      ...p,
+      activityTickets: (p.activityTickets ?? 0) + ticketTotal,
+      appliedAirdrops: [
+        ...(p.appliedAirdrops ?? []),
+        ...grants.map((g) => g.rewardId),
+      ],
+    }));
+    toast(formatDexRewardToast(grants), { critical: true });
+  }, [toast]);
+
   // Load save when wallet connects — chain axols + cloud profile/quests.
   useEffect(() => {
     if (!mounted || !isLinked || !walletAddress) return;
@@ -443,7 +490,7 @@ export default function World() {
 
       let ready = false;
 
-      if (chainClient) {
+      if (chainClient && !isDemoWallet(walletAddress)) {
         try {
           ready = await chainClient.isReady();
           setChainReady(ready);
@@ -544,6 +591,11 @@ export default function World() {
         resourcesDraft = energyRefill.resources;
       }
 
+      if (isDemoWallet(walletAddress)) {
+        setChainReady(false);
+        resourcesDraft = applyDemoResources(resourcesDraft);
+      }
+
       primeIds(axolsDraft);
       setAxols(axolsDraft);
       setResources(normalizeResources(resourcesDraft));
@@ -557,6 +609,7 @@ export default function World() {
       if (cloud?.battleHistory) battleId.current = Math.max(battleId.current, ...metaHistory.map((b) => b.id), 0) + 1;
 
       setSaveReady(true);
+      queueMicrotask(() => checkDexRewards());
 
       const restoredFromBackup =
         !walletSave?.axols.length &&
@@ -565,7 +618,9 @@ export default function World() {
 
       const count = axolsDraft.length;
       toast(
-        gift.applied
+        isDemoWallet(walletAddress)
+          ? "Demo mode — unlimited resources, no SOLAX burns."
+          : gift.applied
           ? "Launch gift! +5 eggs · +4 breeds per Solaxy"
           : eggRecovery.applied
             ? "Nursery restocked! +8 eggs ready for breeding."
@@ -590,21 +645,27 @@ export default function World() {
     setScreen("home");
     setBreedOpen(false);
     sfx.startAmbient();
-  }, [mounted, isLinked, walletAddress, chainClient]);
+  }, [mounted, isLinked, walletAddress, chainClient, checkDexRewards]);
 
-  // Log out when wallet disconnects (skip while connecting).
+  // Log out when wallet disconnects — debounced so adapter blips don't flash tutorial ↔ game.
   useEffect(() => {
     if (!mounted || connecting || isLinked) return;
-    loadedWalletRef.current = null;
-    setSaveReady(false);
-    setPondArranging(false);
-    setPondArrangeView(null);
-    apply(loggedOutSave());
-    setWallet(null);
-    setWalletFull(null);
-    setFeed([]);
-    setScreen("home");
-    setBreedOpen(false);
+
+    const t = window.setTimeout(() => {
+      if (connecting || isLinked) return;
+      loadedWalletRef.current = null;
+      setSaveReady(false);
+      setPondArranging(false);
+      setPondArrangeView(null);
+      apply(loggedOutSave());
+      setWallet(null);
+      setWalletFull(null);
+      setFeed([]);
+      setScreen("home");
+      setBreedOpen(false);
+    }, 800);
+
+    return () => window.clearTimeout(t);
   }, [mounted, isLinked, connecting]);
 
   // Patch any axols bred earlier in the session (before cosmetics shipped).
@@ -669,6 +730,10 @@ export default function World() {
   // Keep displayed SOLAX in sync with wallet SPL balance (no chain client required).
   useEffect(() => {
     if (!mounted || !publicKey) return;
+    if (isDemoWallet(publicKey.toBase58())) {
+      setResources((r) => applyDemoResources(r));
+      return;
+    }
     let cancelled = false;
     const syncBal = () => {
       void readSolaxBalance(connection, publicKey, resourcesRef.current.solax).then((solax) => {
@@ -699,6 +764,51 @@ export default function World() {
     const iv = setInterval(load, 4000);
     return () => { cancelled = true; clearInterval(iv); };
   }, [wallet]);
+
+  // Load friends list when wallet linked.
+  useEffect(() => {
+    if (!walletFull) {
+      setFriends([]);
+      return;
+    }
+    const load = () => {
+      void fetchFriendRows(walletFull).then(setFriends).catch(() => {});
+    };
+    load();
+    const iv = setInterval(load, 20_000);
+    return () => clearInterval(iv);
+  }, [walletFull]);
+
+  // Player Market watch alerts — friends + watched classes.
+  useEffect(() => {
+    if (!walletFull) return;
+    let cancelled = false;
+    const poll = () => {
+      void fetchMarketplace()
+        .then((listings) => {
+          if (cancelled) return;
+          const seedOnly = !marketSeededRef.current;
+          if (seedOnly) marketSeededRef.current = true;
+          const alerts = detectMarketAlerts(listings, friendsRef.current, marketWatches, seedOnly);
+          for (const alert of alerts) {
+            toast(alertMessage(alert), { critical: true });
+          }
+        })
+        .catch(() => {});
+    };
+    poll();
+    const iv = setInterval(poll, 18_000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [walletFull, marketWatches, toast]);
+
+  const toggleMarketWatch = useCallback((cls: AxolClass) => {
+    const next = toggleWatchClass(cls);
+    setMarketWatchesState(next);
+    toast(next.includes(cls) ? `Watching ${CLASS_META[cls].name} listings` : `Stopped watching ${CLASS_META[cls].name}`);
+  }, [toast]);
 
   const announceFeed = useCallback((what: string, color = "#a463ff") => {
     const who = profileRef.current.name.trim() || "Trainer";
@@ -735,8 +845,8 @@ export default function World() {
     return solax;
   }, [connection, publicKey]);
 
-  const requireWallet = () => {
-    if (!wallet) {
+  const requireWallet = useCallback(() => {
+    if (!connected || !publicKey) {
       toast("Link your wallet to play.", { critical: true });
       return false;
     }
@@ -745,9 +855,10 @@ export default function World() {
       return false;
     }
     return true;
-  };
+  }, [connected, publicKey, toast]);
 
   const applyChainState = useCallback(async () => {
+    if (demoModeRef.current) return;
     if (!chainClient) return;
     const state = await chainClient.refreshState();
     setAxols(state.axols.map(withCosmetic));
@@ -761,85 +872,58 @@ export default function World() {
   /** Transfer SOLAX to burn wallet, verify on-chain, refresh balance. */
   const burnAndRefresh = useCallback(
     async (cost: number): Promise<boolean> => {
+      if (demoModeRef.current) return true;
       if (!requireWallet() || !publicKey) {
         toast("Connect wallet to spend SOLAX", { critical: true });
         return false;
       }
       const signer = walletSigner();
-      if (!signer.sendTransaction && !signer.signTransaction) {
+      const canSign =
+        !!signer.sendTransaction ||
+        !!signer.signTransaction ||
+        (publicKey && phantomMatches(publicKey));
+      if (!canSign) {
         toast("Wallet cannot sign transactions — reconnect your wallet", { critical: true });
         return false;
       }
+      const held = resourcesRef.current.solax;
+      if (cost > 0 && held < cost) {
+        toast(
+          `Need ${cost.toLocaleString()} SOLAX (you have ${Math.floor(held).toLocaleString()})`,
+          { critical: true },
+        );
+        return false;
+      }
+
+      setPurchasing(true);
       try {
-        const buildRes = await fetch("/api/build-burn", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wallet: publicKey.toBase58(), amount: cost }),
+        toast("Preparing SOLAX transfer…", { critical: true });
+        const result = await spendSolaxViaBurnWallet(connection, signer, publicKey, cost, {
+          onReadyToSign: () =>
+            toast("Open Phantom to approve — check the extension icon if no popup appears", {
+              critical: true,
+            }),
         });
-
-        const buildData = (await buildRes.json().catch(() => ({}))) as {
-          error?: string;
-          balance?: number;
-          account?: string;
-          transaction?: string;
-          blockhash?: string;
-          lastValidBlockHeight?: number;
-        };
-
-        if (!buildRes.ok || !buildData.transaction || !buildData.account) {
-          toast(
-            buildData.error ??
-              "Could not prepare SOLAX transfer — reconnect wallet and try again",
-            { critical: true },
-          );
+        if (!result.ok) {
+          toast(result.error, { critical: true });
           return false;
         }
 
-        const held = {
-          account: new PublicKey(buildData.account),
-          balance: buildData.balance ?? resourcesRef.current.solax,
-        };
-        setResources((r) => ({ ...r, solax: Math.max(held.balance, r.solax) }));
-
-        toast("Confirm SOLAX transfer in your wallet…", { critical: true });
-        const tx = deserializeBurnTransaction(buildData.transaction);
-        const sig = await sendWalletTransaction(connection, signer, tx, {
-          blockhash: buildData.blockhash,
-          lastValidBlockHeight: buildData.lastValidBlockHeight,
-          preserveBlockhash: true,
-        });
-
-        let verified = await verifySolaxBurnTransfer(
-          connection,
-          sig,
-          publicKey,
-          cost,
-          held.account,
-        );
-        if (!verified) {
-          const res = await fetch("/api/verify-burn", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ signature: sig, wallet: publicKey.toBase58(), amount: cost }),
-          });
-          if (res.ok) {
-            const data = (await res.json()) as { verified?: boolean };
-            verified = !!data.verified;
-          }
-        }
-        if (!verified) {
-          console.warn("[burn] verify inconclusive but tx confirmed", sig);
-        }
-
-        const solax = await readSolaxBalance(connection, publicKey);
+        const solax = await readSolaxBalance(connection, publicKey, result.balance);
         setResources((r) => ({ ...r, solax: solax > 0 ? solax : Math.max(0, r.solax - cost) }));
         recordEconomy(cost);
         return true;
       } catch (e) {
         console.error("[burn]", e);
         const msg = e instanceof Error ? e.message : "Transaction cancelled or failed.";
+        if (e instanceof DOMException && e.name === "TimeoutError") {
+          toast("Server timed out preparing transfer — try again", { critical: true });
+          return false;
+        }
         toast(msg.length > 100 ? "Transaction cancelled or failed." : msg, { critical: true });
         return false;
+      } finally {
+        setPurchasing(false);
       }
     },
     [connection, publicKey, toast, recordEconomy, requireWallet, walletSigner],
@@ -849,17 +933,41 @@ export default function World() {
     if (!requireWallet()) return null;
 
     const r = resourcesRef.current;
-    const canOnChainMint = !!(chainClient && chainReady && r.solax >= COSTS.roll.solax);
+    const demo = demoModeRef.current;
+
+    if (!demo) {
+      if (r.dna < COSTS.roll.dna) {
+        toast("Not enough DNA — buy more at Harbor or claim the free bonus", { critical: true });
+        return null;
+      }
+      if (r.energy < COSTS.roll.energy) {
+        toast("Out of energy — refill below to keep spinning", { critical: true });
+        return null;
+      }
+      if (r.solax < COSTS.roll.solax) {
+        toast(`Need ${COSTS.roll.solax.toLocaleString()} SOLAX to spin`, { critical: true });
+        return null;
+      }
+    }
+
+    const canOnChainMint = !!(chainClient && chainReady && !demo);
 
     if (canOnChainMint && chainClient) {
       toast("Confirm mint in your wallet…", { critical: true });
       try {
         const { axol } = await chainClient.mintAxol();
         const rolled = withCosmetic(axol);
+        if (!demo) {
+          setResources((prev) => ({
+            ...prev,
+            dna: prev.dna - COSTS.roll.dna,
+            energy: prev.energy - COSTS.roll.energy,
+          }));
+        }
         await applyChainState();
         bumpQuest("rolls");
-        grantProgression("hatch", COSTS.roll.solax);
-        recordEconomy(COSTS.roll.solax);
+        if (!demo) grantProgression("hatch", COSTS.roll.solax);
+        if (!demo) recordEconomy(COSTS.roll.solax);
         pushFeed(`minted ${rolled.rarity} ${CLASS_META[rolled.cls].name} on-chain!`, CLASS_META[rolled.cls].color);
         return rolled;
       } catch (e) {
@@ -869,40 +977,53 @@ export default function World() {
       }
     }
 
-    if (r.dna < COSTS.roll.dna) {
-      toast("Not enough DNA — buy more at Harbor or claim the free bonus", { critical: true });
-      return null;
-    }
-    if (r.energy < COSTS.roll.energy) {
-      toast("Out of energy — refill below to keep spinning", { critical: true });
-      return null;
-    }
+    if (!(await burnAndRefresh(COSTS.roll.solax))) return null;
 
-    setResources((prev) => ({
-      ...prev,
-      dna: prev.dna - COSTS.roll.dna,
-      energy: prev.energy - COSTS.roll.energy,
-    }));
-    const rolled = withCosmetic(randomAxol({ rarity: rollRarity(_luck) }));
-    setAxols((list) => [...list, rolled]);
+    if (!demo) {
+      setResources((prev) => ({
+        ...prev,
+        dna: prev.dna - COSTS.roll.dna,
+        energy: prev.energy - COSTS.roll.energy,
+      }));
+    }
+    const seasonCls = rollSeasonClass(
+      _luck,
+      isSeasonActive(),
+      SEASON_1.classifiedRollOdds,
+      SEASON_1.classifiedLuckMult,
+    );
+    const rolled = withCosmetic(
+      randomAxol({ rarity: rollRarity(_luck), ...(seasonCls ? { cls: seasonCls } : {}) }),
+    );
+    setAxols((list) => {
+      const next = [...list, rolled];
+      axolsRef.current = next;
+      queueMicrotask(() => checkDexRewards());
+      return next;
+    });
     bumpQuest("rolls");
-    grantProgression("hatch");
-    pushFeed(`rolled a ${rolled.rarity} ${CLASS_META[rolled.cls].name}!`, CLASS_META[rolled.cls].color);
+    if (!demo) grantProgression("hatch", COSTS.roll.solax);
+    if (seasonCls) {
+      pushFeed(`CLASSIFIED pull — ${rolled.rarity} ${CLASS_META[rolled.cls].name}!`, CLASS_META[rolled.cls].color);
+    } else {
+      pushFeed(`rolled a ${rolled.rarity} ${CLASS_META[rolled.cls].name}!`, CLASS_META[rolled.cls].color);
+    }
     return rolled;
   };
 
   const doBreed = async (aId: number, bId: number, solaxCost = 0): Promise<Axol | null> => {
     if (!requireWallet()) return null;
+    const demo = demoModeRef.current;
     const a = axols.find((x) => x.id === aId);
     const b = axols.find((x) => x.id === bId);
     if (!a || !b) return null;
 
-    if (resources.eggs < COSTS.breed.eggs) {
+    if (!demo && resources.eggs < COSTS.breed.eggs) {
       toast("Need 1 egg to breed");
       return null;
     }
 
-    if (chainClient && chainReady) {
+    if (chainClient && chainReady && !demo) {
       if (resources.energy < ON_CHAIN_COSTS.breedEnergy) {
         toast("Not enough energy to breed.");
         return null;
@@ -926,22 +1047,28 @@ export default function World() {
 
     if (solaxCost > 0 && !(await burnAndRefresh(solaxCost))) return null;
     const child = breedAxol(a, b);
-    setResources((r) => ({ ...r, eggs: r.eggs - COSTS.breed.eggs }));
-    setAxols((list) => [...list.map((x) => (x.id === aId || x.id === bId ? { ...x, breedCount: x.breedCount + 1 } : x)), child]);
+    if (!demo) setResources((r) => ({ ...r, eggs: r.eggs - COSTS.breed.eggs }));
+    setAxols((list) => {
+      const next = [...list.map((x) => (x.id === aId || x.id === bId ? { ...x, breedCount: x.breedCount + 1 } : x)), child];
+      axolsRef.current = next;
+      queueMicrotask(() => checkDexRewards());
+      return next;
+    });
     setSelectedId(child.id);
     bumpQuest("breeds");
-    grantProgression("breed", solaxCost);
+    grantProgression("breed", demo ? 0 : solaxCost);
     pushFeed(`hatched a Gen ${child.generation} ${CLASS_META[child.cls].name}!`, CLASS_META[child.cls].color);
     return child;
   };
 
   const doBattle = async (myId: number, enemyOverride?: Axol) => {
     if (!requireWallet()) return null;
+    const demo = demoModeRef.current;
     const mine = axols.find((x) => x.id === myId);
     if (!mine) return null;
     const enemy = enemyOverride ?? wildAxol(mine);
 
-    if (chainClient && chainReady) {
+    if (chainClient && chainReady && !demo) {
       if (resources.energy < COSTS.battle.energy) {
         toast(`Need ${COSTS.battle.energy} energy to battle`);
         return null;
@@ -973,17 +1100,19 @@ export default function World() {
       toast("Practice battle — wild Solaxy (not on-chain yet).");
     }
 
-    if (resources.energy < COSTS.battle.energy) {
+    if (!demo && resources.energy < COSTS.battle.energy) {
       toast(`Need ${COSTS.battle.energy} energy to battle`);
       return null;
     }
     const result: BattleResult = resolveBattle(mine, enemy);
     const gain = solaxyXpGain(mine, result.rewardXp);
-    setResources((r) => ({
-      ...r,
-      energy: Math.max(0, r.energy - COSTS.battle.energy),
-      dna: r.dna + (result.win ? 5 : 0),
-    }));
+    if (!demo) {
+      setResources((r) => ({
+        ...r,
+        energy: Math.max(0, r.energy - COSTS.battle.energy),
+        dna: r.dna + (result.win ? 5 : 0),
+      }));
+    }
     setAxols((list) =>
       list.map((x) => {
         if (x.id !== myId) return x;
@@ -998,6 +1127,7 @@ export default function World() {
   };
 
   const spendDna = useCallback((amount: number): boolean => {
+    if (demoModeRef.current) return true;
     if (amount <= 0) return true;
     if (resources.dna < amount) return false;
     setResources((r) => ({ ...r, dna: r.dna - amount }));
@@ -1005,6 +1135,7 @@ export default function World() {
   }, [resources.dna]);
 
   const consumeHarborItems = useCallback((keys: string[]): boolean => {
+    if (demoModeRef.current) return true;
     const items = normalizeItems(resources.items);
     for (const k of keys) {
       if ((items[k] ?? 0) < 1) return false;
@@ -1034,14 +1165,7 @@ export default function World() {
       }
     }
 
-    if (price > 0) {
-      setPurchasing(true);
-      try {
-        if (!(await burnAndRefresh(price))) return false;
-      } finally {
-        setPurchasing(false);
-      }
-    }
+    if (price > 0 && !(await burnAndRefresh(price))) return false;
 
     if (reward) {
       setResources((r) => {
@@ -1073,7 +1197,7 @@ export default function World() {
       toast(`+${itemEffect.amount.toLocaleString()} XP for ${target.name}`);
     }
 
-    if (label && price > 0) {
+    if (label && price > 0 && !demoModeRef.current) {
       announceFeed(`bought ${label}!`, "#2fe0cf");
       grantProgression("market_purchase", price);
     }
@@ -1111,12 +1235,14 @@ export default function World() {
 
   const claimDnaBonus = (): boolean => {
     if (!requireWallet()) return false;
-    const remaining = dnaBonusRemaining(lastDnaBonusAt);
-    if (remaining > 0) {
-      toast(`Next bonus in ${formatCooldown(remaining)}`);
-      return false;
+    if (!demoModeRef.current) {
+      const remaining = dnaBonusRemaining(lastDnaBonusAt);
+      if (remaining > 0) {
+        toast(`Next bonus in ${formatCooldown(remaining)}`);
+        return false;
+      }
     }
-    setResources((r) => ({ ...r, dna: r.dna + DNA_BONUS.amount }));
+    setResources((r) => applyDemoResources({ ...r, dna: r.dna + DNA_BONUS.amount }));
     setLastDnaBonusAt(Date.now());
     grantProgression("dna_bonus");
     sfx.dnaBonus();
@@ -1125,7 +1251,12 @@ export default function World() {
   };
 
   const addAxol = (a: Axol) => {
-    setAxols((list) => [...list, a]);
+    setAxols((list) => {
+      const next = [...list, a];
+      axolsRef.current = next;
+      queueMicrotask(() => checkDexRewards());
+      return next;
+    });
     pushFeed(`acquired a ${a.rarity} ${CLASS_META[a.cls].name}!`, CLASS_META[a.cls].color);
   };
 
@@ -1165,8 +1296,8 @@ export default function World() {
     const gain = blocks * ENERGY_REFILL.perBlock;
     if (blocks <= 0) return false;
     if (!(await burnAndRefresh(cost))) return false;
-    setResources((r) => ({ ...r, energy: Math.min(r.maxEnergy, r.energy + gain) }));
-    grantProgression("energy_refill", cost);
+    setResources((r) => applyDemoResources({ ...r, energy: Math.min(r.maxEnergy, r.energy + gain) }));
+    if (!demoModeRef.current) grantProgression("energy_refill", cost);
     announceFeed(`refilled ${gain} energy`, "#ffd24a");
     return true;
   };
@@ -1215,6 +1346,94 @@ export default function World() {
     return true;
   };
 
+  const followTrainer = useCallback(
+    async (targetWallet: string, action: "follow" | "unfollow" = "follow"): Promise<boolean> => {
+      if (!walletFull || targetWallet === walletFull) return false;
+      try {
+        await apiFollow(walletFull, targetWallet, action);
+        const rows = await fetchFriendRows(walletFull);
+        setFriends(rows);
+        toast(action === "follow" ? "Following trainer!" : "Unfollowed");
+        return true;
+      } catch {
+        toast("Could not update friends list");
+        return false;
+      }
+    },
+    [walletFull, toast],
+  );
+
+  const listSolaxyForSale = useCallback(
+    async (axolId: number, priceSolax: number): Promise<boolean> => {
+      if (!requireWallet() || !walletFull) return false;
+      if (axols.length <= 1) {
+        toast("Keep at least one Solaxy in your pond!");
+        return false;
+      }
+      const a = axols.find((x) => x.id === axolId);
+      if (!a) return false;
+      if (priceSolax < 10_000) {
+        toast("Minimum listing price is 10,000 SOLAX");
+        return false;
+      }
+      if (!(await burnAndRefresh(SEASON_1.listingFeeSolax))) return false;
+      const snapshot = { ...a };
+      setAxols((list) => list.filter((x) => x.id !== axolId));
+      if (activeId === axolId) {
+        const next = axols.find((x) => x.id !== axolId);
+        setActiveId(next?.id ?? null);
+        setSelectedId(next?.id ?? null);
+      }
+      try {
+        await listOnMarketplace({
+          wallet: walletFull,
+          sellerName: profileRef.current.name,
+          axol: snapshot,
+          priceSolax,
+        });
+        setProfile((p) => ({
+          ...p,
+          appliedAirdrops: [...(p.appliedAirdrops ?? []), "v13_listed"].filter((x, i, arr) => arr.indexOf(x) === i),
+        }));
+        if (!demoModeRef.current) grantProgression("market_purchase", SEASON_1.listingFeeSolax);
+        announceFeed(`listed ${CLASS_META[a.cls].name} #${a.id} for ${priceSolax.toLocaleString()} SOLAX`, "#2fe0cf");
+        toast("Listed on Player Market!");
+        return true;
+      } catch (e) {
+        setAxols((list) => [...list, snapshot]);
+        toast(e instanceof Error ? e.message : "Listing failed", { critical: true });
+        return false;
+      }
+    },
+    [axols, activeId, walletFull, burnAndRefresh, requireWallet, toast, announceFeed, grantProgression],
+  );
+
+  const buyMarketListing = useCallback(
+    async (listingId: string, priceSolax: number): Promise<boolean> => {
+      if (!requireWallet() || !walletFull) return false;
+      const tax = Math.ceil(priceSolax * SEASON_1.saleTaxRate);
+      const total = priceSolax + tax;
+      if (!(await burnAndRefresh(total))) return false;
+      try {
+        const { axol } = await buyMarketplaceListing(walletFull, listingId);
+        setAxols((list) => {
+          const next = [...list, axol];
+          axolsRef.current = next;
+          queueMicrotask(() => checkDexRewards());
+          return next;
+        });
+        if (!demoModeRef.current) grantProgression("market_purchase", total);
+        announceFeed(`bought ${CLASS_META[axol.cls].name} #${axol.id} on the market!`, CLASS_META[axol.cls].color);
+        toast(`Purchased ${CLASS_META[axol.cls].name} #${axol.id}!`);
+        return true;
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Purchase failed", { critical: true });
+        return false;
+      }
+    },
+    [walletFull, burnAndRefresh, requireWallet, toast, announceFeed, grantProgression, checkDexRewards],
+  );
+
   const setUsername = (raw: string) => {
     const name = formatTrainerName(raw);
     const base = name.split(".")[0] || name;
@@ -1252,6 +1471,29 @@ export default function World() {
       setScreen("empire");
     });
   };
+
+  const challengeTrainer = useCallback(
+    async (targetWallet: string): Promise<boolean> => {
+      if (!requireWallet() || !walletFull) return false;
+      if (targetWallet === walletFull) {
+        toast("Can't challenge yourself");
+        return false;
+      }
+      const p = await fetchPublicPlayer(targetWallet);
+      if (!p?.axols.length) {
+        toast("Trainer has no Solaxies to battle");
+        return false;
+      }
+      const champion = pickChampion(p);
+      if (!champion) return false;
+      setViewingPlayer(null);
+      setPendingChallenge({ player: p, champion, isReal: true });
+      setScreen("battle");
+      toast(`Friend challenge — fight ${p.name} in the Arena!`, { critical: true });
+      return true;
+    },
+    [walletFull, requireWallet, toast],
+  );
 
   const world: WorldApi = {
     axols,
@@ -1361,6 +1603,17 @@ export default function World() {
     consumeHarborItems,
     resetPondLayout,
     chainReady,
+    demoMode,
+    friends,
+    followTrainer,
+    listSolaxyForSale,
+    buyMarketListing,
+    challengeTrainer,
+    clearChallenge: () => setPendingChallenge(null),
+    pendingChallenge,
+    marketWatches,
+    toggleMarketWatch,
+    checkDexRewards,
   };
 
   const onBuilding = (t: Target) => (t === "breed" ? setBreedOpen(true) : setScreen(t));
@@ -1461,7 +1714,27 @@ export default function World() {
 
       <BottomNav current={screen} onNav={setScreen} />
 
-      {breedOpen && <BreedModal axols={axols} resources={resources} onBreed={doBreed} onClose={() => setBreedOpen(false)} />}
+      {purchasing ? (
+        <div className="fixed inset-0 z-[110] grid place-items-center bg-ink-900/75 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-ink-850/95 px-8 py-6 text-center shadow-glow">
+            <div className="mx-auto mb-4 h-11 w-11 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
+            <div className="font-display text-lg font-extrabold text-white">Processing purchase…</div>
+            <p className="mt-2 text-[0.78rem] leading-relaxed text-white/60">
+              Open Phantom and approve the SOLAX transfer. No popup? Click the Phantom icon in your browser toolbar (puzzle piece → Phantom).
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {breedOpen && (
+        <BreedModal
+          axols={axols}
+          resources={resources}
+          demoMode={demoMode}
+          onBreed={doBreed}
+          onClose={() => setBreedOpen(false)}
+        />
+      )}
 
       {needsUsername(profile) && <UsernameModal onSubmit={setUsername} />}
 
@@ -1473,6 +1746,9 @@ export default function World() {
         youTrophies={profile.trophies}
         youAvatar={avatarSrc(profile.avatarId)}
         onVisit={visitEmpire}
+        onFollow={followTrainer}
+        onChallenge={(w) => void challengeTrainer(w)}
+        friends={friends}
       />
 
       <Toast msg={toastMsg} />
@@ -1515,7 +1791,7 @@ function MuteButton() {
 function Toast({ msg }: { msg: string | null }) {
   if (!msg) return null;
   return (
-    <div className="pointer-events-none fixed bottom-28 left-1/2 z-[60] -translate-x-1/2 animate-pop">
+    <div className="pointer-events-none fixed bottom-28 left-1/2 z-[100] -translate-x-1/2 animate-pop">
       <div className="rounded-full border border-white/15 bg-ink-850/95 px-5 py-2.5 font-display text-sm font-extrabold text-white shadow-glow backdrop-blur">
         {msg}
       </div>

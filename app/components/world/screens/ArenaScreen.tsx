@@ -7,14 +7,15 @@ import {
   RARITY_META,
   Replay,
   ReplayEvent,
-  axolSprite,
   buildBattleTeam,
   buildReplay,
   COSTS,
   wildAxol,
 } from "@/lib/game";
+import { AxolSpriteImg, ClassSpriteImg, useAxolSpriteSrc } from "../primitives";
 import { sfx } from "@/lib/sfx";
 import { fetchBattleOpponent, opponentFromPlayer } from "@/lib/global-players";
+import type { BattleOpponentPayload } from "@/lib/public-player";
 import { leagueFromTrophies, nextLeagueFromTrophies, leagueTierProgress } from "@/lib/profile";
 import type { WorldApi } from "../world";
 import { Panel, ScreenShell, ScreenTop, SectionTitle } from "../ScreenChrome";
@@ -50,6 +51,12 @@ const BATTLE_COLOR: Record<AxolClass, string> = {
   mech: "#5ce0ff",
   ember: "#ff6b3d",
   void: "#b06bff",
+  zephyr: "#ffe066",
+  nocturne: "#c4b5ff",
+  mycelium: "#7dff6a",
+  solara: "#ffd24a",
+  glacier: "#9ae8ff",
+  mirage: "#ff9df5",
 };
 
 const OPP_NAMES = ["AxolMaster", "CoralKing", "NeonFin", "VoidSerpent", "PixelPaws", "LunarGill", "ApexBeast", "SporeLord", "TidalQueen", "EmberFang", "GlitchToad", "MysticGill"];
@@ -111,16 +118,15 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
 
   const busy = phase === "searching" || phase === "matched" || phase === "commencing" || phase === "replay";
 
-  async function findOpponent() {
+  async function runBattleFlow(
+    champion: Axol,
+    opp: Opponent,
+    introToast?: string,
+  ) {
     if (!mine || busy) return;
-    if (world.resources.energy < ENERGY_COST) {
-      world.toast("Not enough energy");
-      return;
-    }
     const token = ++runToken.current;
     const alive = () => token === runToken.current;
 
-    sfx.click();
     skipRef.current = false;
     setSpeedSafe(1);
     setResult(null);
@@ -130,41 +136,27 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
     setEnemy(null);
     setPhase("searching");
 
-    const match = await fetchBattleOpponent(world.walletAddress, world.profile.trophies);
-    await delay(900);
+    await delay(introToast ? 700 : 900);
     if (!alive()) return;
 
-    const out = await world.doBattle(mine.id, match?.champion);
+    const out = await world.doBattle(mine.id, champion);
     if (!alive()) return;
     if (!out) {
       setPhase("lobby");
       return;
     }
 
+    if (introToast) world.toast(introToast);
+
     await delay(600);
     if (!alive()) return;
 
     const rep = buildReplay(out.mine, out.enemy, out.result.win, items);
-    let opp: Opponent;
-    if (match?.isReal && match.player) {
-      opp = opponentFromPlayer(match.player);
-      world.toast(`Matched vs ${match.player.name} — real trainer!`);
-    } else {
-      const et = Math.max(20, trophies + (Math.floor(Math.random() * 80) - 40));
-      const oppName = OPP_NAMES[Math.floor(Math.random() * OPP_NAMES.length)];
-      opp = {
-        name: oppName,
-        title: "Practice wild — no live trainers matched",
-        trophies: et,
-        rank: leagueFromTrophies(et),
-        winRate: 46 + Math.floor(Math.random() * 28),
-        team: [out.enemy, wildAxol(out.mine), wildAxol(out.mine)],
-        isReal: false,
-      };
-      world.toast("No live trainers in range — practice vs wild Solaxy");
-    }
+    const finalOpp: Opponent = !opp.isReal
+      ? { ...opp, team: [out.enemy, wildAxol(out.mine), wildAxol(out.mine)] }
+      : opp;
     setEnemy(out.enemy);
-    setOpponent(opp);
+    setOpponent(finalOpp);
     setResult(out.result);
     setReplay(rep);
     setMineHp(rep.mineMax);
@@ -221,6 +213,60 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
     }
     setPhase("result");
   }
+
+  async function findOpponent() {
+    if (!mine || busy) return;
+    if (world.resources.energy < ENERGY_COST) {
+      world.toast("Not enough energy");
+      return;
+    }
+    sfx.click();
+
+    const match = await fetchBattleOpponent(world.walletAddress, world.profile.trophies);
+    let opp: Opponent;
+    if (match?.isReal && match.player) {
+      opp = opponentFromPlayer(match.player);
+    } else {
+      const et = Math.max(20, trophies + (Math.floor(Math.random() * 80) - 40));
+      const oppName = OPP_NAMES[Math.floor(Math.random() * OPP_NAMES.length)];
+      opp = {
+        name: oppName,
+        title: "Practice wild — no live trainers matched",
+        trophies: et,
+        rank: leagueFromTrophies(et),
+        winRate: 46 + Math.floor(Math.random() * 28),
+        team: [],
+        isReal: false,
+      };
+    }
+
+    const champion = match?.champion ?? wildAxol(mine);
+    const toastMsg = match?.isReal
+      ? `Matched vs ${match!.player.name} — real trainer!`
+      : "No live trainers in range — practice vs wild Solaxy";
+
+    await runBattleFlow(champion, opp, toastMsg);
+  }
+
+  async function runFriendChallenge(payload: BattleOpponentPayload) {
+    if (!mine || busy) return;
+    if (world.resources.energy < ENERGY_COST) {
+      world.toast("Not enough energy");
+      world.clearChallenge();
+      return;
+    }
+    sfx.click();
+    world.clearChallenge();
+    const opp = opponentFromPlayer(payload.player);
+    await runBattleFlow(payload.champion, opp, `Friend challenge vs ${payload.player.name}!`);
+  }
+
+  useEffect(() => {
+    const challenge = world.pendingChallenge;
+    if (!challenge || phase !== "lobby" || !mine) return;
+    void runFriendChallenge(challenge);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [world.pendingChallenge, phase, mine?.id]);
 
   function backToLobby() {
     runToken.current += 1;
@@ -635,6 +681,12 @@ const FX_COLOR: Record<AxolClass, string> = {
   mech: "#5ce0ff",
   ember: "#ff6b3d",
   void: "#b06bff",
+  zephyr: "#ffe066",
+  nocturne: "#c4b5ff",
+  mycelium: "#7dff6a",
+  solara: "#ffd24a",
+  glacier: "#9ae8ff",
+  mirage: "#ff9df5",
 };
 
 // High-juice per-class attack effects. The attacker side drives the travel
@@ -792,6 +844,7 @@ function BigFighter({
 }) {
   const cc = BATTLE_COLOR[axol.cls];
   const flip = side === "right";
+  const { src, onError, matte } = useAxolSpriteSrc(axol);
   // Tiered combat text: super-effective (green) > crit (orange) > normal (white)
   const label = floatEv?.crit ? "CRITICAL!" : floatEv?.eff ? "SUPER EFFECTIVE" : null;
   const dmgColor = floatEv?.crit ? "#ff9b2e" : floatEv?.eff ? "#54e07a" : "#ffffff";
@@ -831,26 +884,33 @@ function BigFighter({
         ) : null}
 
         <img
-          src={axolSprite(axol)}
+          src={src}
           alt=""
           className={`relative object-contain ${celebrate ? "" : "animate-floaty"}`}
           style={{
             width: size,
             transform: flip ? "scaleX(-1)" : undefined,
+            mixBlendMode: matte ? "lighten" : undefined,
             filter: `drop-shadow(0 16px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 26px ${celebrate ? "#54e07a" : cc}88) ${defeated ? "grayscale(0.7) brightness(0.6)" : ""}`,
             opacity: dim ? 0.45 : defeated ? 0.7 : 1,
           }}
           draggable={false}
+          onError={onError}
         />
 
         {/* white hit-flash silhouette when struck */}
         {shake ? (
           <img
-            src={axolSprite(axol)}
+            src={src}
             alt=""
             aria-hidden
             className="pointer-events-none absolute left-0 top-0 z-20 animate-flashout object-contain"
-            style={{ width: size, transform: flip ? "scaleX(-1)" : undefined, filter: "brightness(0) invert(1)" }}
+            style={{
+              width: size,
+              transform: flip ? "scaleX(-1)" : undefined,
+              mixBlendMode: matte ? "lighten" : undefined,
+              filter: "brightness(0) invert(1)",
+            }}
             draggable={false}
           />
         ) : null}
@@ -1034,7 +1094,7 @@ function ProfileCard({
       <div className={`mt-2 flex gap-1 ${side === "right" ? "justify-end" : ""}`}>
         {team.slice(0, 3).map((a, i) => (
           <span key={i} className="grid h-8 w-8 place-items-center rounded-lg border bg-black/40" style={{ borderColor: `${BATTLE_COLOR[a.cls]}66` }}>
-            <img src={axolSprite(a)} alt="" className="h-6 w-6 object-contain" draggable={false} />
+            <AxolSpriteImg axol={a} alt="" className="h-6 w-6 object-contain" />
           </span>
         ))}
       </div>
@@ -1299,9 +1359,13 @@ function RewardRow({ img, star, color, label }: { img?: string; star?: boolean; 
 function TeamTray({ world, team, myId, setMyId }: { world: WorldApi; team: Axol[]; myId: number | null; setMyId: (id: number) => void }) {
   const [paid, setPaid] = useState(0);
   useEffect(() => {
+    if (world.demoMode) {
+      setPaid(SLOT_PRICES.length);
+      return;
+    }
     const v = Number(window.localStorage?.getItem("arena_paid_slots"));
     if (!Number.isNaN(v) && v > 0) setPaid(Math.min(SLOT_PRICES.length, v));
-  }, []);
+  }, [world.demoMode]);
   const capacity = Math.min(MAX_TEAM, FREE_SLOTS + paid);
 
   async function unlock(slotIndex: number) {
@@ -1309,7 +1373,7 @@ function TeamTray({ world, team, myId, setMyId }: { world: WorldApi; team: Axol[
     const price = SLOT_PRICES[slotIndex - FREE_SLOTS];
     const itemId = `arena-slot-${slotIndex + 1}`;
     if (!(await world.purchase(price, undefined, `Team slot ${slotIndex + 1}`, itemId))) {
-      world.toast("Not enough SOLAX in wallet");
+      world.toast(`Need ${price.toLocaleString()} SOLAX — approve transfer in Phantom`, { critical: true });
       return;
     }
     const next = paid + 1;
@@ -1344,7 +1408,7 @@ function TeamTray({ world, team, myId, setMyId }: { world: WorldApi; team: Axol[
                 style={{ width: 92, borderColor: active ? cc : "rgba(255,255,255,0.1)", boxShadow: active ? `0 0 18px ${cc}66` : undefined }}
               >
                 <span className="absolute left-1.5 top-1.5 h-2.5 w-2.5 rounded-full" style={{ background: cc }} />
-                <img src={axolSprite(a)} alt="" className="mx-auto h-14 w-14 object-contain" draggable={false} />
+                <AxolSpriteImg axol={a} alt="" className="mx-auto h-14 w-14 object-contain" />
                 <div className="font-display text-[0.66rem] font-extrabold text-white">{CLASS_META[a.cls].name}</div>
                 <div className="text-[0.54rem] font-bold text-white/55">Lv.{a.level}</div>
                 {active ? <div className="mt-0.5 rounded-full bg-brand-500/30 text-[0.5rem] font-extrabold uppercase tracking-wide text-brand-200">Selected</div> : null}

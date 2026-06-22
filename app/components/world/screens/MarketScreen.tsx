@@ -6,6 +6,8 @@ import { sfx } from "@/lib/sfx";
 import type { WorldApi } from "../world";
 import { Panel, ScreenShell, ScreenTop, SectionTitle } from "../ScreenChrome";
 import { CloseIcon, GameIcon } from "../GameIcon";
+import { ModalPortal } from "../ModalPortal";
+import { MarketplacePanel } from "../MarketplacePanel";
 
 // ---------------------------------------------------------------------------
 // data
@@ -266,6 +268,7 @@ function randomFeed(): Feed {
 
 export default function MarketScreen({ world }: { world: WorldApi }) {
   const now = useNow(1000);
+  const [harborTab, setHarborTab] = useState<"shop" | "players">("shop");
   const [openMerchant, setOpenMerchant] = useState<Merchant | null>(null);
   const [blackOpen, setBlackOpen] = useState(false);
   const [stock, setStock] = useState<Record<string, number>>(() => {
@@ -312,14 +315,27 @@ export default function MarketScreen({ world }: { world: WorldApi }) {
     });
   }
 
-  function buy(it: Item): Promise<boolean> {
+  const [confirmItem, setConfirmItem] = useState<Item | null>(null);
+  const [buying, setBuying] = useState(false);
+
+  function requestBuy(it: Item) {
     if (it.stock != null && (stock[it.id] ?? 0) <= 0) {
       world.toast("Sold out — check back soon!");
-      return Promise.resolve(false);
+      return;
+    }
+    sfx.click();
+    setConfirmItem(it);
+  }
+
+  async function executeBuy(it: Item): Promise<boolean> {
+    if (it.stock != null && (stock[it.id] ?? 0) <= 0) {
+      world.toast("Sold out — check back soon!");
+      return false;
     }
     const reward: Partial<Resources> = { ...it.reward };
     if (reward.energy === 9999) reward.energy = world.resources.maxEnergy;
-    return world.purchase(it.price, reward, it.name, it.id).then((ok) => {
+    try {
+      const ok = await world.purchase(it.price, reward, it.name, it.id);
       if (!ok) return false;
       if (it.addAxol) world.addAxol(randomAxol({ rarity: it.addAxol }));
       if (it.stock != null) setStock((s) => ({ ...s, [it.id]: (s[it.id] ?? 0) - 1 }));
@@ -327,7 +343,21 @@ export default function MarketScreen({ world }: { world: WorldApi }) {
       grantXp(it.price);
       world.toast(`Bought ${it.name}!`);
       return true;
-    });
+    } catch {
+      world.toast("Purchase failed — try again", { critical: true });
+      return false;
+    }
+  }
+
+  async function confirmPurchase() {
+    if (!confirmItem || buying || world.purchasing) return;
+    setBuying(true);
+    try {
+      const ok = await executeBuy(confirmItem);
+      if (ok) setConfirmItem(null);
+    } finally {
+      setBuying(false);
+    }
   }
 
   const dailyEnds = useMemo(() => {
@@ -341,6 +371,33 @@ export default function MarketScreen({ world }: { world: WorldApi }) {
       <ScreenTop world={world} title="HARBOR MARKET" subtitle="A living port of traders, ships & secrets" icon="/icon-market.png" />
 
       <div className="mx-auto grid max-w-[1500px] grid-cols-12 gap-3 px-3 pb-28 sm:px-5">
+        <div className="col-span-12 flex gap-1 rounded-full border border-white/10 bg-black/35 p-1 lg:col-span-8">
+          <button
+            type="button"
+            onClick={() => setHarborTab("shop")}
+            className={`flex-1 rounded-full py-2 font-display text-[0.68rem] font-extrabold uppercase tracking-wide transition ${
+              harborTab === "shop" ? "bg-gradient-to-r from-amber-400 to-amber-600 text-ink-900" : "text-white/55 hover:text-white/80"
+            }`}
+          >
+            Harbor Shop
+          </button>
+          <button
+            type="button"
+            onClick={() => setHarborTab("players")}
+            className={`flex-1 rounded-full py-2 font-display text-[0.68rem] font-extrabold uppercase tracking-wide transition ${
+              harborTab === "players" ? "bg-gradient-to-r from-cyan-400 to-brand-500 text-white shadow-glow" : "text-white/55 hover:text-white/80"
+            }`}
+          >
+            Player Market
+          </button>
+        </div>
+
+        {harborTab === "players" ? (
+          <div className="col-span-12 lg:col-span-8">
+            <MarketplacePanel world={world} />
+          </div>
+        ) : (
+        <>
         {/* MAIN */}
         <div className="col-span-12 space-y-4 lg:col-span-8">
           {/* header scene */}
@@ -363,7 +420,7 @@ export default function MarketScreen({ world }: { world: WorldApi }) {
           </div>
 
           {/* DAILY DEAL — Supercell hero */}
-          <DailyDeal world={world} ends={dailyEnds - now} onBuy={buy} />
+          <DailyDeal world={world} ends={dailyEnds - now} onBuy={requestBuy} busy={buying || world.purchasing} />
 
           {/* BLACK MARKET (rare) */}
           {bmActive ? <BlackMarketBanner endsIn={bmEnds - now} onEnter={() => setBlackOpen(true)} /> : null}
@@ -389,7 +446,7 @@ export default function MarketScreen({ world }: { world: WorldApi }) {
             </div>
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
               {SHIPS.map((sh) => (
-                <ShipCard key={sh.id} sh={sh} endsIn={nextBoundary(now, sh.periodMs) - now} stock={stock} onBuy={buy} />
+                <ShipCard key={sh.id} sh={sh} endsIn={nextBoundary(now, sh.periodMs) - now} stock={stock} onBuy={requestBuy} />
               ))}
             </div>
           </div>
@@ -401,10 +458,20 @@ export default function MarketScreen({ world }: { world: WorldApi }) {
           <SpecialMerchant m={special} endsIn={specialEnds - now} stock={stock} onVisit={() => setOpenMerchant(special)} />
           <MarketFeed feed={feed} />
         </aside>
+        </>
+        )}
       </div>
 
-      {openMerchant ? <MerchantModal m={openMerchant} stock={stock} onBuy={buy} onClose={() => setOpenMerchant(null)} /> : null}
-      {blackOpen ? <BlackMarketModal endsIn={bmEnds - now} stock={stock} onBuy={buy} onClose={() => setBlackOpen(false)} /> : null}
+      {openMerchant ? <MerchantModal m={openMerchant} stock={stock} onBuy={requestBuy} onClose={() => setOpenMerchant(null)} /> : null}
+      {blackOpen ? <BlackMarketModal endsIn={bmEnds - now} stock={stock} onBuy={requestBuy} onClose={() => setBlackOpen(false)} /> : null}
+      {confirmItem ? (
+        <PurchaseConfirmModal
+          item={confirmItem}
+          busy={buying || world.purchasing}
+          onConfirm={() => void confirmPurchase()}
+          onClose={() => setConfirmItem(null)}
+        />
+      ) : null}
     </ScreenShell>
   );
 }
@@ -501,9 +568,19 @@ function ItemTile({ it, sold, onBuy }: { it: Item; sold?: boolean; onBuy: () => 
 // Daily Deal
 // ---------------------------------------------------------------------------
 
-function DailyDeal({ world, ends, onBuy }: { world: WorldApi; ends: number; onBuy: (it: Item) => void | Promise<boolean> }) {
-  void world;
+function DailyDeal({
+  world,
+  ends,
+  onBuy,
+  busy,
+}: {
+  world: WorldApi;
+  ends: number;
+  onBuy: (it: Item) => void;
+  busy?: boolean;
+}) {
   const deal: Item = { id: "daily", name: "Mystery Egg", img: "/egg-cosmic.png", price: 9000, was: 15000, rarity: "Epic", reward: { eggs: 1 } };
+  const canAfford = world.resources.solax >= deal.price;
   return (
     <div className="relative overflow-hidden rounded-3xl border border-amber-300/30 p-4 shadow-panel">
       <img src="/deal-bg.png" alt="" className="pointer-events-none absolute inset-0 h-full w-full object-cover" draggable={false} />
@@ -533,11 +610,13 @@ function DailyDeal({ world, ends, onBuy }: { world: WorldApi; ends: number; onBu
             <span className="text-base text-white/40 line-through">{deal.was?.toLocaleString()}</span>
           </div>
           <button
+            type="button"
             onClick={() => onBuy(deal)}
-            className="group relative mt-2 w-full overflow-hidden rounded-2xl bg-gradient-to-b from-[#ffcf4a] to-[#ff9d1f] py-2.5 font-display text-base font-extrabold text-[#5a2e00] shadow-[0_10px_24px_rgba(255,157,31,0.5)] transition hover:-translate-y-0.5 sm:w-auto sm:px-10"
+            disabled={busy}
+            className="group relative mt-2 w-full overflow-hidden rounded-2xl bg-gradient-to-b from-[#ffcf4a] to-[#ff9d1f] py-2.5 font-display text-base font-extrabold text-[#5a2e00] shadow-[0_10px_24px_rgba(255,157,31,0.5)] transition enabled:hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-70 sm:w-auto sm:px-10"
           >
-            <span className="absolute inset-0 -translate-x-full bg-white/40 blur-md transition-transform duration-700 group-hover:translate-x-full" />
-            BUY NOW
+            <span className="pointer-events-none absolute inset-0 -translate-x-full bg-white/40 blur-md transition-transform duration-700 group-hover:translate-x-full" />
+            {busy ? "Processing…" : canAfford ? "BUY NOW" : "Not enough SOLAX"}
           </button>
         </div>
       </div>
@@ -569,18 +648,74 @@ function MerchantBooth({ m, onClick }: { m: Merchant; onClick: () => void }) {
   );
 }
 
+function PurchaseConfirmModal({
+  item,
+  busy,
+  onConfirm,
+  onClose,
+}: {
+  item: Item;
+  busy: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const rc = RARITY_META[item.rarity].color;
+  return (
+    <ModalShell accent={rc} onClose={busy ? () => {} : onClose}>
+      <div className="flex flex-col items-center text-center">
+        <div className="relative grid h-28 w-28 place-items-center">
+          <span className="absolute h-24 w-24 rounded-full blur-2xl" style={{ background: `${rc}55` }} />
+          {item.img ? (
+            <img src={item.img} alt="" className="relative h-24 w-24 object-contain" draggable={false} style={{ filter: `drop-shadow(0 0 14px ${rc}bb)` }} />
+          ) : item.icon ? (
+            <GameIcon src={item.icon} size={48} glow={rc} className="relative" />
+          ) : null}
+        </div>
+        <div className="mt-3 font-display text-2xl font-extrabold text-white">{item.name}</div>
+        {item.note ? <div className="mt-1 text-[0.72rem] font-bold text-emerald-300">{item.note}</div> : null}
+        <div className="mt-3 flex items-center justify-center gap-2">
+          <PriceTag price={item.price} was={item.was} />
+        </div>
+        <p className="mt-3 max-w-sm text-[0.72rem] leading-relaxed text-white/60">
+          Confirm to burn <b className="text-amber-300">{item.price.toLocaleString()} SOLAX</b> from your wallet. Phantom will open to approve the transfer.
+        </p>
+        <div className="mt-5 flex w-full gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="flex-1 rounded-2xl border border-white/15 bg-white/5 py-2.5 font-display text-sm font-extrabold text-white/80 transition enabled:hover:bg-white/10 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="flex-1 rounded-2xl bg-gradient-to-b from-[#ffcf4a] to-[#ff9d1f] py-2.5 font-display text-sm font-extrabold text-[#5a2e00] shadow-glow transition enabled:hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-70"
+          >
+            {busy ? "Waiting for wallet…" : "Confirm purchase"}
+          </button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
 function ModalShell({ accent, children, onClose }: { accent: string; children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[80] grid place-items-center bg-ink-900/85 px-4 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="relative w-full max-w-lg animate-pop rounded-3xl border p-5 shadow-panel"
-        style={{ borderColor: `${accent}55`, background: "linear-gradient(160deg,#1a1030,#120a26)", boxShadow: `0 0 60px ${accent}33, 0 24px 60px rgba(0,0,0,0.6)` }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button onClick={onClose} className="absolute right-3 top-3 z-10 grid h-8 w-8 place-items-center rounded-full bg-black/40 text-white/70 transition hover:bg-black/70" aria-label="Close"><CloseIcon className="h-3.5 w-3.5" /></button>
-        {children}
+    <ModalPortal>
+      <div className="fixed inset-0 z-[100] grid place-items-center bg-ink-900/85 px-4 backdrop-blur-sm" onClick={onClose}>
+        <div
+          className="relative w-full max-w-lg animate-pop rounded-3xl border p-5 shadow-panel"
+          style={{ borderColor: `${accent}55`, background: "linear-gradient(160deg,#1a1030,#120a26)", boxShadow: `0 0 60px ${accent}33, 0 24px 60px rgba(0,0,0,0.6)` }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button onClick={onClose} className="absolute right-3 top-3 z-10 grid h-8 w-8 place-items-center rounded-full bg-black/40 text-white/70 transition hover:bg-black/70" aria-label="Close"><CloseIcon className="h-3.5 w-3.5" /></button>
+          {children}
+        </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }
 

@@ -9,11 +9,11 @@ import {
   RARITY_ORDER,
   Rarity,
   abilities,
-  axolSprite,
   feedCost,
   powerUpCost,
   xpNeeded,
 } from "@/lib/game";
+import { AxolSpriteImg, ClassSpriteImg } from "../primitives";
 import { UI } from "@/lib/ui-icons";
 import { GameIcon } from "../GameIcon";
 import type { WorldApi } from "../world";
@@ -21,6 +21,8 @@ import { ScreenShell, ScreenTop } from "../ScreenChrome";
 import { SolaxyDex } from "../SolaxyDex";
 import { PondArrangeControls, PondLayer } from "../PondLayer";
 import { dexProgress } from "@/lib/dex-catalog";
+import { SEASON_1 } from "@/lib/season";
+import { ModalPortal } from "../ModalPortal";
 
 type DetailTab = "Details" | "Genes" | "Lineage" | "Achievements";
 type SortMode = "Newest" | "Oldest" | "Level" | "Rarity";
@@ -426,7 +428,7 @@ function BoxCard({ axol, selected, active, releaseMode, onClick }: { axol: Axol;
       <span className="absolute right-1.5 top-1.5 z-10 text-[0.78rem]" style={{ color: active ? "#ffd24a" : rc, textShadow: active ? "0 0 8px #ffd24a" : "none" }}>{active ? "★" : "☆"}</span>
       <div className="relative mx-auto" style={{ width: 70, height: 60 }}>
         <span className="absolute bottom-0 left-1/2 -translate-x-1/2 rounded-full blur-md" style={{ width: 44, height: 12, background: `${cc}55` }} />
-        <img src={axolSprite(axol)} alt="" className="relative mx-auto h-[60px] w-[60px] object-contain transition group-hover:scale-110" draggable={false} style={{ filter: "drop-shadow(0 5px 5px rgba(0,0,0,0.45))" }} />
+        <AxolSpriteImg axol={axol} alt="" className="relative mx-auto h-[60px] w-[60px] object-contain transition group-hover:scale-110" style={{ filter: "drop-shadow(0 5px 5px rgba(0,0,0,0.45))" }} />
       </div>
       <div className="mt-0.5 truncate text-[0.66rem] font-extrabold text-white">{CLASS_META[axol.cls].name} #{axol.id}</div>
       <div className="text-[0.56rem] text-white/45">Lv.{axol.level}</div>
@@ -467,6 +469,9 @@ function DetailPanel({ world, axol, tab, setTab }: { world: WorldApi; axol: Axol
   const isActive = world.activeId === axol.id;
   const need = xpNeeded(axol.level);
   const xpPct = Math.min(100, Math.round((axol.xp / need) * 100));
+  const [listOpen, setListOpen] = useState(false);
+  const [listPrice, setListPrice] = useState("50000");
+  const [listing, setListing] = useState(false);
 
   return (
     <div className="glass overflow-hidden rounded-3xl shadow-panel">
@@ -486,7 +491,7 @@ function DetailPanel({ world, axol, tab, setTab }: { world: WorldApi; axol: Axol
       <div className="grid grid-cols-5 gap-2 px-4 py-3">
         <div className="col-span-3 relative grid place-items-center rounded-2xl" style={{ background: `radial-gradient(110% 90% at 50% 30%, ${cc}33, transparent 70%)` }}>
           <span className="absolute bottom-4 h-8 w-28 rounded-[50%] blur-xl" style={{ background: `${cc}66` }} />
-          <img src={axolSprite(axol)} alt="" className="relative h-36 w-36 animate-floaty object-contain" draggable={false} style={{ filter: `drop-shadow(0 12px 14px rgba(0,0,0,0.55)) drop-shadow(0 0 16px ${cc}55)` }} />
+          <AxolSpriteImg axol={axol} alt="" className="relative h-36 w-36 animate-floaty object-contain" style={{ filter: `drop-shadow(0 12px 14px rgba(0,0,0,0.55)) drop-shadow(0 0 16px ${cc}55)` }} />
         </div>
         <div className="col-span-2 flex flex-col justify-center gap-2">
           <div className="rounded-xl border border-white/10 bg-black/30 p-2">
@@ -534,6 +539,8 @@ function DetailPanel({ world, axol, tab, setTab }: { world: WorldApi; axol: Axol
             const c = feedCost(axol.level);
             if (await world.feedAxol(axol.id)) {
               world.toast(`Fed ${CLASS_META[axol.cls].name} #${axol.id} · −${c.toLocaleString()} SOLAX burned`, { critical: true });
+            } else {
+              world.toast(`Feed failed — need ${c.toLocaleString()} SOLAX in wallet`, { critical: true });
             }
           }}
         />
@@ -546,12 +553,76 @@ function DetailPanel({ world, axol, tab, setTab }: { world: WorldApi; axol: Axol
             const c = powerUpCost(axol.level);
             if (await world.powerUp(axol.id)) {
               world.toast(`Powered up to Lv.${axol.level + 1}! · −${c.toLocaleString()} SOLAX burned`, { critical: true });
+            } else {
+              world.toast(`Power up failed — need ${c.toLocaleString()} SOLAX in wallet`, { critical: true });
             }
           }}
         />
         <Action label={isActive ? "Active" : "Set Active"} icon={UI.crown} color="#ffb02e" active={isActive} onClick={() => { world.setActive(axol.id); world.toast(`${CLASS_META[axol.cls].name} #${axol.id} set as leader`); }} />
         <Action label="Breed" icon={UI.egg} color="#b06bff" onClick={() => world.openBreed()} />
       </div>
+
+      <div className="px-4 pb-2">
+        <button
+          type="button"
+          onClick={() => setListOpen(true)}
+          className="w-full rounded-xl border border-cyan-400/35 bg-cyan-500/10 py-2.5 font-display text-[0.68rem] font-extrabold uppercase tracking-wide text-cyan-200 transition hover:bg-cyan-500/20"
+        >
+          List on Player Market
+        </button>
+        <p className="mt-1 text-center text-[0.54rem] text-white/40">
+          {SEASON_1.listingFeeSolax.toLocaleString()} SOLAX listing fee burned · min 10,000 SOLAX
+        </p>
+      </div>
+
+      {listOpen ? (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[85] flex items-center justify-center p-4 animate-fade">
+            <button type="button" aria-label="Close" className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => !listing && setListOpen(false)} />
+            <div className="relative w-full max-w-sm rounded-3xl border border-cyan-400/30 bg-ink-900/95 p-5 shadow-panel animate-pop">
+              <h3 className="font-display text-lg font-extrabold text-white">List for Sale</h3>
+              <p className="mt-1 text-[0.68rem] text-white/55">
+                {CLASS_META[axol.cls].name} #{axol.id} · Lv.{axol.level} {axol.rarity}
+              </p>
+              <label className="mt-4 block text-[0.62rem] font-bold uppercase tracking-wide text-white/45">Price (SOLAX)</label>
+              <input
+                type="number"
+                min={10000}
+                step={1000}
+                value={listPrice}
+                onChange={(e) => setListPrice(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/15 bg-black/40 px-3 py-2.5 font-display text-lg font-extrabold text-amber-200 outline-none focus:border-cyan-400/50"
+              />
+              <p className="mt-2 text-[0.58rem] text-white/45">
+                Buyer pays +{(SEASON_1.saleTaxRate * 100).toFixed(0)}% tax burned. Solaxy leaves your roster when listed.
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button type="button" disabled={listing} onClick={() => setListOpen(false)} className="rounded-xl border border-white/15 py-2.5 text-[0.72rem] font-bold text-white/60 hover:bg-white/5 disabled:opacity-50">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={listing}
+                  onClick={async () => {
+                    const price = Math.floor(Number(listPrice));
+                    if (!Number.isFinite(price) || price < 10_000) {
+                      world.toast("Minimum price is 10,000 SOLAX");
+                      return;
+                    }
+                    setListing(true);
+                    const ok = await world.listSolaxyForSale(axol.id, price);
+                    setListing(false);
+                    if (ok) setListOpen(false);
+                  }}
+                  className="rounded-xl bg-gradient-to-r from-cyan-400 to-brand-500 py-2.5 font-display text-[0.72rem] font-extrabold text-white shadow-glow disabled:opacity-60"
+                >
+                  {listing ? "Listing…" : "Confirm List"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      ) : null}
 
       {/* tabs */}
       <div className="flex gap-1 border-t border-white/8 px-3 pt-2">
@@ -695,7 +766,7 @@ function AncestorCard({ a, world, size }: { a: Ancestor; world: WorldApi; size: 
       </span>
       <div className="relative mx-auto grid place-items-center" style={{ width: dim ? 38 : 52, height: dim ? 38 : 52 }}>
         <span className="absolute bottom-0 left-1/2 -translate-x-1/2 rounded-full blur-md" style={{ width: dim ? 22 : 30, height: 8, background: `${cc}55` }} />
-        <img src={CLASS_META[a.cls].sprite} alt="" className="relative object-contain" style={{ width: dim ? 36 : 50, height: dim ? 36 : 50 }} draggable={false} />
+        <ClassSpriteImg cls={a.cls} alt="" className="relative object-contain" style={{ width: dim ? 36 : 50, height: dim ? 36 : 50 }} />
       </div>
       {!dim && <div className="mt-0.5 truncate text-[0.6rem] font-bold text-white">{CLASS_META[a.cls].name} #{a.id}</div>}
       <div className="text-[0.52rem] font-semibold" style={{ color: dim ? rc : "rgba(255,255,255,0.5)" }}>Lv.{a.level}</div>

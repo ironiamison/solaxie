@@ -21,15 +21,31 @@ export type AxolClass =
   | "shadow"
   | "mech"
   | "ember"
-  | "void";
+  | "void"
+  | "zephyr"
+  | "nocturne"
+  | "mycelium"
+  | "solara"
+  | "glacier"
+  | "mirage";
 
 export const CLASSES: AxolClass[] = [
   "beast", "plant", "aquatic", "bird", "bug", "reptile",
   "crystal", "shadow", "mech", "ember", "void",
+  "zephyr", "nocturne", "mycelium", "solara", "glacier", "mirage",
 ];
 
 /** New Primal elements — full illustrated evolution line (no filter breed strains yet). */
 export const PRIMAL_CLASSES: AxolClass[] = ["crystal", "shadow", "mech", "ember", "void"];
+
+/** Season 1 classified drop — unique illustrated dex entries. */
+export const CLASSIFIED_CLASSES: AxolClass[] = [
+  "zephyr", "nocturne", "mycelium", "solara", "glacier", "mirage",
+];
+
+export function isClassifiedClass(cls: AxolClass): boolean {
+  return CLASSIFIED_CLASSES.includes(cls);
+}
 
 // Class advantage — three triangles.
 //   Triangle 1: Beast > Plant > Aquatic > Beast
@@ -48,6 +64,12 @@ const BEATS: Record<AxolClass, AxolClass> = {
   ember: "crystal",
   shadow: "void",
   void: "crystal",
+  zephyr: "glacier",
+  glacier: "mycelium",
+  mycelium: "zephyr",
+  nocturne: "mirage",
+  mirage: "solara",
+  solara: "nocturne",
 };
 
 export const CLASS_META: Record<
@@ -65,6 +87,12 @@ export const CLASS_META: Record<
   mech: { name: "Mech", color: "#5ce0ff", sprite: "/sprites/mech.png", beats: BEATS.mech, identity: "Precision tech fighter" },
   ember: { name: "Ember", color: "#ff6b3d", sprite: "/sprites/ember.png", beats: BEATS.ember, identity: "Burst damage pyro" },
   void: { name: "Void", color: "#b06bff", sprite: "/sprites/void.png", beats: BEATS.void, identity: "Cosmic finisher" },
+  zephyr: { name: "Zephyr", color: "#ffe066", sprite: "/sprites/dex/unreleased-zephyr.png", beats: BEATS.zephyr, identity: "Storm striker" },
+  nocturne: { name: "Nocturne", color: "#c4b5ff", sprite: "/sprites/dex/unreleased-nocturne.png", beats: BEATS.nocturne, identity: "Lunar assassin" },
+  mycelium: { name: "Mycelium", color: "#7dff6a", sprite: "/sprites/dex/unreleased-mycelium.png", beats: BEATS.mycelium, identity: "Toxic spore tank" },
+  solara: { name: "Solara", color: "#ffd24a", sprite: "/sprites/dex/unreleased-solara.png", beats: BEATS.solara, identity: "Solar burst" },
+  glacier: { name: "Glacier", color: "#9ae8ff", sprite: "/sprites/dex/unreleased-glacier.png", beats: BEATS.glacier, identity: "Frost wall" },
+  mirage: { name: "Mirage", color: "#ff9df5", sprite: "/sprites/dex/unreleased-mirage.png", beats: BEATS.mirage, identity: "Dream trickster" },
 };
 
 export type Advantage = "advantage" | "disadvantage" | "neutral";
@@ -125,6 +153,12 @@ const CLASS_BONUS: Record<AxolClass, Partial<Stats>> = {
   mech: { attack: 16, skill: 20 },
   ember: { attack: 26, morale: 12 },
   void: { skill: 24, attack: 14 },
+  zephyr: { speed: 24, skill: 16 },
+  nocturne: { skill: 28, morale: 14 },
+  mycelium: { hp: 34, defense: 14 },
+  solara: { attack: 24, morale: 18 },
+  glacier: { defense: 26, hp: 22 },
+  mirage: { skill: 26, speed: 18 },
 };
 
 /** Generate stats from class + rarity (rarity multiplies everything). */
@@ -216,7 +250,7 @@ export type Resources = {
 };
 
 export const COSTS = {
-  /** On-chain mint uses solax; off-chain DNA Core spin uses dna + energy. */
+  /** DNA Core spin — DNA + energy + SOLAX burn every time. */
   roll: { solax: 100_000, dna: 1, energy: 10 },
   breed: { solax: 150_000, eggs: 1 },
   battle: { energy: 10 },
@@ -358,6 +392,18 @@ export function generateRandomAxol(opts: Partial<Axol> = {}): Axol {
 // Backwards-compatible aliases used around the app.
 export const randomAxol = generateRandomAxol;
 export const rollRarity = getRarityRoll;
+
+/** Season 1 — small chance to roll a Classified element instead of the classic pool. */
+export function rollSeasonClass(
+  luck = 0,
+  seasonActive: boolean,
+  baseOdds = 0.028,
+  luckMult = 0.035,
+): AxolClass | undefined {
+  if (!seasonActive) return undefined;
+  if (Math.random() >= baseOdds + luck * luckMult) return undefined;
+  return pick(CLASSIFIED_CLASSES);
+}
 
 /** A wild opponent scaled near the player's fighter. */
 export function wildAxol(reference?: Axol): Axol {
@@ -692,6 +738,12 @@ export const ELEMENT_ICON: Record<AxolClass, string> = {
   mech: CLASS_META.mech.sprite,
   ember: CLASS_META.ember.sprite,
   void: CLASS_META.void.sprite,
+  zephyr: CLASS_META.zephyr.sprite,
+  nocturne: CLASS_META.nocturne.sprite,
+  mycelium: CLASS_META.mycelium.sprite,
+  solara: CLASS_META.solara.sprite,
+  glacier: CLASS_META.glacier.sprite,
+  mirage: CLASS_META.mirage.sprite,
 };
 
 /** Full-body sprite for an Axol — respects breed cosmetics & per-class cosmic art. */
@@ -712,6 +764,7 @@ export function strainCosmeticId(cls: AxolClass, strainIndex: number): BreedCosm
 }
 
 export function isDexStrainCosmetic(cls: AxolClass, cosmeticId: string): boolean {
+  if (CLASSIFIED_CLASSES.includes(cls)) return false;
   for (let i = 0; i < DEX_STRAINS_PER_CLASS; i++) {
     if (strainCosmeticId(cls, i) === cosmeticId) return true;
   }
@@ -749,11 +802,28 @@ export function axolClassSprite(a: Axol): string {
 }
 
 export function axolSprite(a: Axol): string {
-  // Primal lines skip the filter-based dex pipeline — use illustrated class art.
   if (PRIMAL_CLASSES.includes(a.cls)) {
     return axolClassSprite(a);
   }
+  if (CLASSIFIED_CLASSES.includes(a.cls)) {
+    return CLASS_META[a.cls].sprite;
+  }
   return `/sprites/dex/${axolDexId(a)}.png`;
+}
+
+/** Primal class PNGs are RGB (no alpha) — lighten blend hides the black matte on dark UI. */
+const PRIMAL_SPRITE_PATHS = new Set(PRIMAL_CLASSES.map((c) => CLASS_META[c].sprite));
+
+export function spriteNeedsMatteBlend(src: string): boolean {
+  return PRIMAL_SPRITE_PATHS.has(src);
+}
+
+/** Ordered fallbacks when a dex/cosmetic sprite fails to load. */
+export function axolSpriteFallbacks(a: Axol): string[] {
+  const primary = axolSprite(a);
+  const classSprite = axolClassSprite(a);
+  const metaSprite = CLASS_META[a.cls].sprite;
+  return [primary, classSprite, metaSprite].filter((s, i, arr) => arr.indexOf(s) === i);
 }
 
 /** Backfill cosmeticId for axols bred before the cosmetics system existed. */
@@ -831,6 +901,12 @@ const ABILITY_POOL: Record<AxolClass, string[]> = {
   mech: ["Pulse Beam", "Overclock", "Hard Reset"],
   ember: ["Flame Rush", "Magma Shell", "Ash Cloud"],
   void: ["Starfall", "Rift Tear", "Gravity Well"],
+  zephyr: ["Gale Strike", "Storm Shield", "Wind Shear"],
+  nocturne: ["Shadow Pulse", "Moon Veil", "Dusk Bind"],
+  mycelium: ["Spore Cloud", "Root Net", "Fungal Bloom"],
+  solara: ["Solar Flare", "Radiant Ward", "Sunburst"],
+  glacier: ["Frost Shard", "Ice Wall", "Permafrost"],
+  mirage: ["Phantom Step", "Mirage Clone", "Sand Veil"],
 };
 
 /** Three deterministic abilities for an Axol, leveled by its rarity/level. */

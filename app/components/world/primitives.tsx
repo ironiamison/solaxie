@@ -1,5 +1,12 @@
-import { ReactNode, useEffect, useState } from "react";
-import { Axol, CLASS_META, PRIMAL_CLASSES, RARITY_META, axolClassSprite, axolSprite } from "@/lib/game";
+import { CSSProperties, ImgHTMLAttributes, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Axol,
+  AxolClass,
+  CLASS_META,
+  RARITY_META,
+  axolSpriteFallbacks,
+  spriteNeedsMatteBlend,
+} from "@/lib/game";
 import { UI } from "@/lib/ui-icons";
 import { CloseIcon, GameIcon } from "./GameIcon";
 
@@ -69,6 +76,100 @@ export function RarityTag({ rarity }: { rarity: Axol["rarity"] }) {
   );
 }
 
+export function useAxolSpriteSrc(axol: Axol) {
+  const fallbacks = useMemo(
+    () => axolSpriteFallbacks(axol),
+    [axol.cls, axol.rarity, axol.cosmeticId],
+  );
+  const fallbackKey = fallbacks.join("|");
+  const [idx, setIdx] = useState(0);
+  useEffect(() => setIdx(0), [fallbackKey]);
+  const src = fallbacks[Math.min(idx, fallbacks.length - 1)] ?? fallbacks[0];
+  const onError = useCallback(() => {
+    setIdx((i) => (i < fallbacks.length - 1 ? i + 1 : i));
+  }, [fallbacks.length]);
+  const matte = spriteNeedsMatteBlend(src);
+  return { src, onError, matte };
+}
+
+type SpriteImgProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src" | "alt"> & {
+  alt?: string;
+  style?: CSSProperties;
+};
+
+export function AxolSpriteImg({
+  axol,
+  className,
+  style,
+  alt = "",
+  ...rest
+}: SpriteImgProps & { axol: Axol }) {
+  const { src, onError, matte } = useAxolSpriteSrc(axol);
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      style={{
+        objectFit: "contain",
+        ...style,
+        mixBlendMode: matte ? "lighten" : style?.mixBlendMode,
+      }}
+      draggable={false}
+      onError={onError}
+      {...rest}
+    />
+  );
+}
+
+export function ClassSpriteImg({
+  cls,
+  className,
+  style,
+  alt = "",
+  ...rest
+}: SpriteImgProps & { cls: AxolClass }) {
+  const src = CLASS_META[cls].sprite;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      style={{
+        objectFit: "contain",
+        ...style,
+        mixBlendMode: spriteNeedsMatteBlend(src) ? "lighten" : style?.mixBlendMode,
+      }}
+      draggable={false}
+      {...rest}
+    />
+  );
+}
+
+/** Any game sprite path — applies matte blend for opaque primal PNGs. */
+export function GameSpriteImg({
+  src,
+  className,
+  style,
+  alt = "",
+  ...rest
+}: SpriteImgProps & { src: string }) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      style={{
+        objectFit: "contain",
+        ...style,
+        mixBlendMode: spriteNeedsMatteBlend(src) ? "lighten" : style?.mixBlendMode,
+      }}
+      draggable={false}
+      {...rest}
+    />
+  );
+}
+
 export function AxolArt({
   axol,
   size = 120,
@@ -83,11 +184,6 @@ export function AxolArt({
   className?: string;
 }) {
   const color = CLASS_META[axol.cls].color;
-  const primary = axolSprite(axol);
-  const fallback = axolClassSprite(axol);
-  const [src, setSrc] = useState(primary);
-  useEffect(() => setSrc(primary), [primary]);
-  const primalMatte = PRIMAL_CLASSES.includes(axol.cls);
 
   return (
     <div className="relative grid place-items-center" style={{ width: size, height: size }}>
@@ -95,21 +191,17 @@ export function AxolArt({
         className="absolute rounded-full blur-xl"
         style={{ width: size * 0.8, height: size * 0.5, bottom: size * 0.06, background: `${color}55` }}
       />
-      <img
-        src={src}
+      <AxolSpriteImg
+        axol={axol}
         alt={CLASS_META[axol.cls].name}
         className={[float ? "relative animate-floaty" : "relative", className].filter(Boolean).join(" ")}
         style={{
           width: size,
           height: size,
-          objectFit: "contain",
-          mixBlendMode: primalMatte ? "lighten" : undefined,
           filter: glow
             ? `drop-shadow(0 0 26px ${glow}) drop-shadow(0 14px 18px rgba(0,0,0,0.6))`
             : "drop-shadow(0 10px 12px rgba(0,0,0,0.5))",
         }}
-        draggable={false}
-        onError={() => { if (src !== fallback) setSrc(fallback); }}
       />
     </div>
   );

@@ -1,5 +1,6 @@
 import { useRef } from "react";
-import { Axol, CLASS_META, axolSprite } from "@/lib/game";
+import { Axol, CLASS_META } from "@/lib/game";
+import { AxolSpriteImg } from "./primitives";
 import {
   COLLECTION_DEFAULT_SPOTS,
   HOME_DEFAULT_SPOTS,
@@ -190,8 +191,8 @@ function PondCreature({
           />
         )}
         <div className={arranging ? "" : "animate-bob"} style={{ animationDelay: `${delay}s` }}>
-          <img
-            src={axolSprite(axol)}
+          <AxolSpriteImg
+            axol={axol}
             alt=""
             className={`mx-auto object-contain transition ${arranging ? "scale-105" : "group-hover:scale-105"}`}
             style={{
@@ -201,7 +202,6 @@ function PondCreature({
                 ? `drop-shadow(0 0 14px ${color}88) drop-shadow(0 6px 8px rgba(0,0,0,0.5))`
                 : `drop-shadow(0 7px 6px rgba(0,0,0,0.45)) drop-shadow(0 0 12px ${color}55)`,
             }}
-            draggable={false}
           />
         </div>
       </div>

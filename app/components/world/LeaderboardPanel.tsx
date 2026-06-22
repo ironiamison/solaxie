@@ -25,6 +25,9 @@ export function LeaderboardPanel({
   youTrophies,
   youAvatar,
   onVisit,
+  onFollow,
+  onChallenge,
+  friends = [],
   compact,
 }: {
   youWallet?: string | null;
@@ -32,6 +35,9 @@ export function LeaderboardPanel({
   youTrophies?: number;
   youAvatar?: string;
   onVisit?: (wallet: string) => void;
+  onFollow?: (wallet: string, action?: "follow" | "unfollow") => Promise<boolean>;
+  onChallenge?: (wallet: string) => void;
+  friends?: import("@/lib/marketplace").FriendRow[];
   compact?: boolean;
 }) {
   const [tab, setTab] = useState<LbTab>("global");
@@ -98,10 +104,37 @@ export function LeaderboardPanel({
       </div>
 
       {tab === "friends" ? (
-        <div className="rounded-xl border border-dashed border-white/15 bg-black/20 px-4 py-8 text-center">
-          <p className="font-display text-sm font-extrabold text-white/70">Friends list — Version 1.3</p>
-          <p className="mt-1 text-[0.66rem] text-white/45">Use Global to find trainers to battle</p>
-        </div>
+        friends.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-white/15 bg-black/20 px-4 py-8 text-center">
+            <p className="font-display text-sm font-extrabold text-white/70">No friends yet</p>
+            <p className="mt-1 text-[0.66rem] text-white/45">Follow trainers from Global — tap + on their row</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {friends.map((f) => (
+              <div key={f.wallet} className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-2">
+                <button type="button" onClick={() => onVisit?.(f.wallet)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                  <span className="relative">
+                    <img src={f.avatar} alt="" className="h-8 w-8 rounded-full object-cover ring-1 ring-white/20" draggable={false} />
+                    {f.online ? <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-ink-900" /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-display text-[0.78rem] font-extrabold text-white">{f.name}</span>
+                  <span className="text-[0.62rem] font-bold text-amber-200">{f.trophies.toLocaleString()}</span>
+                </button>
+                {onFollow ? (
+                  <button type="button" onClick={() => onFollow(f.wallet, "unfollow")} className="shrink-0 rounded-lg border border-white/15 px-2 py-1 text-[0.58rem] font-bold text-white/50 hover:bg-white/5">
+                    ✕
+                  </button>
+                ) : null}
+                {onChallenge ? (
+                  <button type="button" onClick={() => onChallenge(f.wallet)} className="shrink-0 rounded-lg border border-rose-400/40 bg-rose-500/15 px-2 py-1 text-[0.58rem] font-extrabold text-rose-200">
+                    ⚔
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )
       ) : (
         <div className={`space-y-1.5 ${compact ? "max-h-[340px] overflow-y-auto pr-1" : ""}`}>
           {(filtered.length ? filtered : rows).slice(0, compact ? 50 : 10).map((row) => (
@@ -117,6 +150,24 @@ export function LeaderboardPanel({
               <img src={row.avatar} alt="" className="h-8 w-8 rounded-full object-cover ring-1 ring-white/20" draggable={false} />
               <span className="min-w-0 flex-1 truncate font-display text-[0.78rem] font-extrabold text-white">{row.name}</span>
               <span className="text-[0.66rem] font-bold text-amber-200">{row.trophies.toLocaleString()}</span>
+              {onFollow && youWallet && row.wallet !== youWallet && !row.you ? (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); void onFollow(row.wallet, "follow"); }}
+                  className="shrink-0 rounded-lg border border-brand-400/40 bg-brand-500/15 px-2 py-0.5 text-[0.58rem] font-extrabold text-brand-200"
+                >
+                  +
+                </button>
+              ) : null}
+              {onChallenge && youWallet && row.wallet !== youWallet && !row.you ? (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onChallenge(row.wallet); }}
+                  className="shrink-0 rounded-lg border border-rose-400/40 bg-rose-500/15 px-2 py-0.5 text-[0.58rem] font-extrabold text-rose-200"
+                >
+                  ⚔
+                </button>
+              ) : null}
             </button>
           ))}
           {!filtered.length && tab === "empire" ? (
@@ -136,6 +187,9 @@ export function LeaderboardModal({
   youTrophies,
   youAvatar,
   onVisit,
+  onFollow,
+  onChallenge,
+  friends = [],
 }: {
   open: boolean;
   onClose: () => void;
@@ -144,6 +198,9 @@ export function LeaderboardModal({
   youTrophies?: number;
   youAvatar?: string;
   onVisit: (wallet: string) => void;
+  onFollow?: (wallet: string, action?: "follow" | "unfollow") => Promise<boolean>;
+  onChallenge?: (wallet: string) => void;
+  friends?: import("@/lib/marketplace").FriendRow[];
 }) {
   if (!open) return null;
 
@@ -164,6 +221,9 @@ export function LeaderboardModal({
           youTrophies={youTrophies}
           youAvatar={youAvatar}
           onVisit={(w) => { onVisit(w); onClose(); }}
+          onFollow={onFollow}
+          onChallenge={(w) => { onChallenge?.(w); onClose(); }}
+          friends={friends}
           compact
         />
       </div>

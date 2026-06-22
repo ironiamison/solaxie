@@ -2,6 +2,7 @@ import type { Axol, AxolClass, Rarity } from "./game";
 import {
   CLASS_META,
   CLASSES,
+  CLASSIFIED_CLASSES,
   DEX_STRAINS_PER_CLASS,
   PRIMAL_CLASSES,
   RARITY_META,
@@ -36,6 +37,9 @@ export function dexSpritePath(id: string): string {
 }
 
 function catalogSprite(cls: AxolClass, id: string): string {
+  if (CLASSIFIED_CLASSES.includes(cls)) {
+    return CLASS_META[cls].sprite;
+  }
   if (PRIMAL_CLASSES.includes(cls)) {
     if (id.startsWith("cosmic-")) return `/sprites/cosmetics/cosmic-${cls}.png`;
     return CLASS_META[cls].sprite;
@@ -57,6 +61,22 @@ function buildCatalog(): DexEntry[] {
   for (const cls of CLASSES) {
     const name = CLASS_META[cls].name;
     let order = 0;
+
+    if (CLASSIFIED_CLASSES.includes(cls)) {
+      entries.push({
+        id: `base-${cls}`,
+        name,
+        stage: "base",
+        stageLabel: "Classified",
+        cls,
+        sprite: CLASS_META[cls].sprite,
+        rarity: "Epic",
+        howToUnlock: "Season 1 DNA Core — rare Classified drop",
+        line: cls,
+        order: order++,
+      });
+      continue;
+    }
 
     entries.push({
       id: `base-${cls}`,
@@ -124,53 +144,20 @@ function buildCatalog(): DexEntry[] {
   return entries;
 }
 
-/** Future Solaxies — teased in dex, never unlocked until a season ships them. */
-const UNRELEASED_SOLAXIES: {
-  id: string;
-  name: string;
-  codename: string;
-  accentColor: string;
-  rarity: Rarity;
-}[] = [
-  { id: "unreleased-zephyr", name: "Zephyr", codename: "Storm Solaxy", accentColor: "#ffe066", rarity: "Epic" },
-  { id: "unreleased-nocturne", name: "Nocturne", codename: "Lunar Solaxy", accentColor: "#c4b5ff", rarity: "Legendary" },
-  { id: "unreleased-mycelium", name: "Mycelium", codename: "Toxic Solaxy", accentColor: "#7dff6a", rarity: "Rare" },
-  { id: "unreleased-solara", name: "Solara", codename: "Solar Solaxy", accentColor: "#ffd24a", rarity: "Legendary" },
-  { id: "unreleased-glacier", name: "Glacier", codename: "Frost Solaxy", accentColor: "#9ae8ff", rarity: "Epic" },
-  { id: "unreleased-mirage", name: "Mirage", codename: "Dream Solaxy", accentColor: "#ff9df5", rarity: "Cosmic" },
-];
-
-function buildUnreleasedCatalog(): DexEntry[] {
-  return UNRELEASED_SOLAXIES.map((s, order) => ({
-    id: s.id,
-    name: s.name,
-    stage: "unreleased" as const,
-    stageLabel: "Version 1.3",
-    cls: "beast" as AxolClass,
-    sprite: dexSpritePath(s.id),
-    rarity: s.rarity,
-    howToUnlock: `${s.codename} — classified. Ships in a future season.`,
-    line: "coming-soon" as const,
-    order,
-    unreleased: true,
-    accentColor: s.accentColor,
-  }));
-}
-
 const PLAYABLE_CATALOG = buildCatalog();
-const UNRELEASED_CATALOG = buildUnreleasedCatalog();
 
-export const DEX_CATALOG = [...PLAYABLE_CATALOG, ...UNRELEASED_CATALOG];
+export const DEX_CATALOG = PLAYABLE_CATALOG;
 
 export const DEX_TOTAL = DEX_CATALOG.length;
 
-/** Count toward player progress — excludes classified teasers. */
+/** Count toward player progress. */
 export const DEX_PLAYABLE_TOTAL = PLAYABLE_CATALOG.length;
 
-export const DEX_CLASSIFIED_COUNT = UNRELEASED_CATALOG.length;
+export const DEX_CLASSIFIED_COUNT = CLASSIFIED_CLASSES.length;
 
-/** Classic lines have 10 forms; Primal lines ship 5 illustrated evolutions. */
+/** Classic lines have 10 forms; Primal 5; Classified 1 illustrated form. */
 export function formsForClass(cls: (typeof CLASSES)[number]): number {
+  if (CLASSIFIED_CLASSES.includes(cls)) return 1;
   return PRIMAL_CLASSES.includes(cls) ? 5 : 10;
 }
 
@@ -201,7 +188,11 @@ export function dexProgress(axols: Axol[]): { unlocked: number; total: number; c
 }
 
 export function dexUnreleasedEntries(): DexEntry[] {
-  return UNRELEASED_CATALOG;
+  return [];
+}
+
+export function dexClassifiedEntries(): DexEntry[] {
+  return DEX_CATALOG.filter((e) => CLASSIFIED_CLASSES.includes(e.cls)).sort((a, b) => a.order - b.order);
 }
 
 export function dexEntriesForLine(line: AxolClass): DexEntry[] {

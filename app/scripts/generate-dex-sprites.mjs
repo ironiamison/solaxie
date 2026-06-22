@@ -40,6 +40,17 @@ const RARITY_PIPELINES = {
   legendary: { hue: 42, saturation: 1.42, brightness: 1.14 },
 };
 
+/** v1.3 — per-element hue offsets so echoes feel distinct, not copy-paste filters. */
+function rarityPipelineFor(cls, stage) {
+  const base = RARITY_PIPELINES[stage];
+  const anchor = CLASS_HUE[cls] ?? 0;
+  return {
+    ...base,
+    hue: base.hue + Math.round(anchor * 0.12),
+    saturation: base.saturation + (anchor % 7) * 0.02,
+  };
+}
+
 const STRAIN_PIPELINES = [
   { hue: 0, saturation: 1.18, brightness: 1.06, sharpen: true },
   { hue: -24, saturation: 1.22, brightness: 0.96, sharpen: false },
@@ -118,7 +129,7 @@ async function main() {
 
     for (const [stage, pipeline] of Object.entries(RARITY_PIPELINES)) {
       const id = `${stage}-${cls}`;
-      await modulateSprite(baseSrc, path.join(OUT, `${id}.png`), pipeline);
+      await modulateSprite(baseSrc, path.join(OUT, `${id}.png`), rarityPipelineFor(cls, stage));
       manifest.push(id);
     }
 

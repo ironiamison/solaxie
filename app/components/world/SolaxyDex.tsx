@@ -7,12 +7,13 @@ import {
   DexEntry,
   formsForClass,
   dexBreedEntries,
+  dexClassifiedEntries,
   dexEntriesForLine,
   dexProgress,
-  dexUnreleasedEntries,
   unlockedDexIds,
 } from "@/lib/dex-catalog";
 import { UI } from "@/lib/ui-icons";
+import { ClassSpriteImg, GameSpriteImg } from "./primitives";
 import { GameIcon } from "./GameIcon";
 
 type Filter = "all" | "breed" | "coming-soon" | (typeof CLASSES)[number];
@@ -24,7 +25,7 @@ export function SolaxyDex({ axols, onToast }: { axols: Axol[]; onToast: (msg: st
   const pct = Math.round((count / total) * 100);
 
   const breedEntries = useMemo(() => dexBreedEntries(), []);
-  const unreleasedEntries = useMemo(() => dexUnreleasedEntries(), []);
+  const classifiedEntries = useMemo(() => dexClassifiedEntries(), []);
 
   return (
     <div>
@@ -33,7 +34,7 @@ export function SolaxyDex({ axols, onToast }: { axols: Axol[]; onToast: (msg: st
           <div>
             <div className="font-display text-lg font-extrabold text-white">Discover every form</div>
             <p className="mt-0.5 text-[0.68rem] text-white/55">
-              {total} playable forms · {classified} classified Solaxies teased for future seasons.
+              {total} playable forms · complete a full element line for +2 eggs &amp; +120 tickets.
             </p>
           </div>
           <div className="text-right">
@@ -65,7 +66,7 @@ export function SolaxyDex({ axols, onToast }: { axols: Axol[]; onToast: (msg: st
       </div>
 
       {filter === "coming-soon" ? (
-        <ComingSoonSection entries={unreleasedEntries} onToast={onToast} />
+        <ClassifiedSection entries={classifiedEntries} unlocked={unlocked} onToast={onToast} />
       ) : filter === "breed" ? (
         <section className="rounded-2xl border border-white/8 bg-black/25 p-3 sm:p-4">
           <div className="mb-3 flex items-center justify-between">
@@ -85,7 +86,7 @@ export function SolaxyDex({ axols, onToast }: { axols: Axol[]; onToast: (msg: st
           {CLASSES.map((line) => (
             <DexLine key={line} line={line} entries={dexEntriesForLine(line)} unlocked={unlocked} onToast={onToast} />
           ))}
-          <ComingSoonSection entries={unreleasedEntries} onToast={onToast} />
+          <ClassifiedSection entries={classifiedEntries} unlocked={unlocked} onToast={onToast} />
         </div>
       ) : (
         <DexLine line={filter} entries={dexEntriesForLine(filter)} unlocked={unlocked} onToast={onToast} />
@@ -120,21 +121,30 @@ function FilterChip({
   );
 }
 
-function ComingSoonSection({ entries, onToast }: { entries: DexEntry[]; onToast: (msg: string) => void }) {
+function ClassifiedSection({
+  entries,
+  unlocked,
+  onToast,
+}: {
+  entries: DexEntry[];
+  unlocked: Set<string>;
+  onToast: (msg: string) => void;
+}) {
+  const owned = entries.filter((e) => unlocked.has(e.id)).length;
   return (
     <section className="rounded-2xl border border-fuchsia-400/20 bg-gradient-to-br from-fuchsia-500/8 via-black/25 to-brand-500/5 p-3 sm:p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="font-display text-sm font-extrabold uppercase tracking-wide text-fuchsia-200">Classified Solaxies</h3>
-          <p className="text-[0.6rem] font-semibold text-white/45">Unlocking in Version 1.3 — visible now as classified teasers.</p>
+          <p className="text-[0.6rem] font-semibold text-white/45">Season 1 drop — roll at the DNA Core during the Classified season.</p>
         </div>
         <span className="rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-2.5 py-1 text-[0.58rem] font-extrabold uppercase tracking-wide text-fuchsia-200">
-          {entries.length} incoming
+          {owned} / {entries.length} owned
         </span>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         {entries.map((e) => (
-          <DexCard key={e.id} entry={e} owned={false} onToast={onToast} compact teaser />
+          <DexCard key={e.id} entry={e} owned={unlocked.has(e.id)} onToast={onToast} compact />
         ))}
       </div>
     </section>
@@ -165,7 +175,7 @@ function DexLine({
           className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-black/40"
           style={{ boxShadow: `0 0 12px ${accent}33` }}
         >
-          <img src={CLASS_META[line].sprite} alt="" className="h-6 w-6 object-contain" draggable={false} />
+          <ClassSpriteImg cls={line} alt="" className="h-6 w-6 object-contain" />
         </span>
         <div className="flex-1">
           <h3 className="font-display text-sm font-extrabold uppercase tracking-wide text-white">
@@ -258,10 +268,9 @@ function DexCard({
             background: owned || isTeaser ? `${clsColor}55` : "transparent",
           }}
         />
-        <img
+        <GameSpriteImg
           src={entry.sprite}
           alt=""
-          draggable={false}
           className={`relative h-full w-full object-contain transition group-hover:scale-105 ${
             owned ? "" : isTeaser ? "opacity-80 saturate-[0.85]" : "opacity-35 grayscale"
           }`}

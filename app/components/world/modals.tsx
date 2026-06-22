@@ -8,15 +8,13 @@ import {
   ELEMENT_ICON,
   RARITY_META,
   Resources,
-  axolClassSprite,
-  axolSprite,
   breedCompatibility,
   possibleElements,
 } from "@/lib/game";
 import { sfx } from "@/lib/sfx";
 import { formatTrainerName, validateUsername } from "@/lib/profile";
 import { UI } from "@/lib/ui-icons";
-import { AxolArt, Modal, PrimaryButton, RarityTag, Stars, StatRow } from "./primitives";
+import { AxolArt, AxolSpriteImg, ClassSpriteImg, Modal, PrimaryButton, RarityTag, Stars, StatRow } from "./primitives";
 import { CloseIcon, GameIcon } from "./GameIcon";
 
 function AxolPick({
@@ -98,7 +96,7 @@ export function RollModal({
 }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Axol | null>(null);
-  const afford = resources.dna >= COSTS.roll.dna && (resources.energy >= COSTS.roll.energy || resources.solax >= COSTS.roll.solax);
+  const afford = resources.dna >= COSTS.roll.dna && resources.energy >= COSTS.roll.energy && resources.solax >= COSTS.roll.solax;
 
   const roll = async () => {
     setLoading(true);
@@ -127,7 +125,7 @@ export function RollModal({
             <img src="/icons/dna.png" alt="" className="h-24 w-24" />
           </div>
           <p className="text-center text-sm text-white/60">
-            Each spin costs <b className="text-white">{COSTS.roll.dna} DNA</b> + <b className="text-white">{COSTS.roll.energy} energy</b> (or <b className="text-white">{COSTS.roll.solax.toLocaleString()} SOLAX</b> on-chain mint).
+            Each spin costs <b className="text-white">{COSTS.roll.dna} DNA</b> + <b className="text-white">{COSTS.roll.energy} energy</b> + <b className="text-white">{COSTS.roll.solax.toLocaleString()} SOLAX</b> burned.
           </p>
           <PrimaryButton variant="purple" onClick={roll} loading={loading} disabled={!afford} className="px-10 text-lg">
             {afford ? (
@@ -182,11 +180,13 @@ type BreedPhase = "idle" | "breeding" | "hatched";
 export function BreedModal({
   axols,
   resources,
+  demoMode = false,
   onBreed,
   onClose,
 }: {
   axols: Axol[];
   resources: Resources;
+  demoMode?: boolean;
   onBreed: (a: number, b: number, solaxCost?: number) => Promise<Axol | null>;
   onClose: () => void;
 }) {
@@ -210,9 +210,11 @@ export function BreedModal({
   const parentB = axols.find((a) => a.id === bId) ?? null;
   const ready = !!parentA && !!parentB && parentA.id !== parentB.id;
 
-  const overLimit = breedsUsed >= FREE_BREEDS;
+  const overLimit = !demoMode && breedsUsed >= FREE_BREEDS;
   const solaxCost = overLimit ? OVERRIDE_COST : 0;
-  const afford = overLimit
+  const afford = demoMode
+    ? ready
+    : overLimit
     ? resources.solax >= OVERRIDE_COST && resources.eggs >= COSTS.breed.eggs
     : resources.eggs >= COSTS.breed.eggs;
   const resetMs = breedResetInMs();
@@ -357,12 +359,11 @@ function ParentSlot({ label, axol, phase, onPick }: { label: string; axol: Axol 
               {/* creature standing on the grass — wrapper centers, inner img bobs
                   (keeping the bob's translateY off the element that holds -translate-x-1/2) */}
               <div className="absolute bottom-[60px] left-1/2 z-10 h-[124px] w-[186px] -translate-x-1/2">
-                <img
-                  src={axolSprite(axol)}
+                <AxolSpriteImg
+                  axol={axol}
                   alt=""
                   className={`h-full w-full object-contain object-bottom ${breeding ? "" : "animate-bob"}`}
                   style={{ filter: `drop-shadow(0 6px 8px rgba(0,0,0,0.45)) drop-shadow(0 0 16px ${color}66)` }}
-                  draggable={false}
                 />
               </div>
             </div>
@@ -504,7 +505,7 @@ function BreedingCore({
         {(ready ? elements : []).map((c) => (
           <div key={c} className="flex flex-col items-center gap-1">
             <span className="grid h-11 w-11 place-items-center rounded-full" style={{ background: `${CLASS_META[c].color}22`, border: `1.5px solid ${CLASS_META[c].color}88` }}>
-              <img src={CLASS_META[c].sprite} alt="" className="h-8 w-8 object-contain" draggable={false} />
+              <ClassSpriteImg cls={c} alt="" className="h-8 w-8 object-contain" />
             </span>
             <span className="text-[0.56rem] font-bold text-white/55">{CLASS_META[c].name}</span>
           </div>
@@ -566,10 +567,6 @@ function HatchReveal({ child, onAgain, onClose }: { child: Axol; onAgain: () => 
   const color = CLASS_META[child.cls].color;
   const rc = RARITY_META[child.rarity].color;
   const epicPlus = RARITY_META[child.rarity].stars >= 3;
-  const primary = axolSprite(child);
-  const fallback = axolClassSprite(child);
-  const [spriteSrc, setSpriteSrc] = useState(primary);
-  useEffect(() => setSpriteSrc(primary), [primary]);
   return (
     <div className="relative flex flex-col items-center">
       <span className="pointer-events-none absolute inset-0 animate-flashout rounded-3xl bg-white" />
@@ -604,13 +601,11 @@ function HatchReveal({ child, onAgain, onClose }: { child: Axol; onAgain: () => 
 
       <div className="relative z-10 grid place-items-center">
         <span className="absolute h-44 w-44 rounded-full blur-3xl" style={{ background: `${color}66` }} />
-        <img
-          src={spriteSrc}
+        <AxolSpriteImg
+          axol={child}
           alt=""
           className="relative h-44 w-44 animate-slamin object-contain"
-          draggable={false}
           style={{ filter: `drop-shadow(0 0 22px ${color}) drop-shadow(0 12px 14px rgba(0,0,0,0.6))` }}
-          onError={() => { if (spriteSrc !== fallback) setSpriteSrc(fallback); }}
         />
         <span className="absolute -right-1 top-1 animate-starpop rounded-full bg-rose-500 px-2 py-0.5 text-[0.58rem] font-extrabold text-white" style={{ animationDelay: "0.5s" }}>NEW!</span>
       </div>
@@ -783,7 +778,7 @@ export function MarketModal({
     setTimeout(() => setMsg(null), 1800);
   };
   return (
-    <Modal iconSrc={UI.market} title="Harbor Market" subtitle="Spend SOLAX on supplies. Player trading — Version 1.3." onClose={onClose}>
+    <Modal iconSrc={UI.market} title="Harbor Market" subtitle="Spend SOLAX on supplies · Player Market tab for P2P trading." onClose={onClose}>
       <div className="grid gap-3 sm:grid-cols-3">
         {items.map((it) => (
           <div key={it.key} className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-black/30 p-4 text-center">
@@ -796,8 +791,8 @@ export function MarketModal({
           </div>
         ))}
       </div>
-      <div className="mt-4 rounded-2xl border border-dashed border-white/15 p-4 text-center text-sm text-white/50">
-        🪙 Player-to-player Solaxy trading — coming in Version 1.3.
+      <div className="mt-4 rounded-2xl border border-cyan-400/25 bg-cyan-500/5 p-4 text-center text-sm text-white/60">
+        🪙 Player-to-player trading is live — open Harbor → <b className="text-cyan-200">Player Market</b> tab.
       </div>
       {msg && (
         <div className="mt-3 rounded-xl bg-brand-400/20 py-2 text-center text-sm font-bold text-brand-300 animate-fade">{msg}</div>

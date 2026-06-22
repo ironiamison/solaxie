@@ -190,6 +190,12 @@ export const PFP_AVATARS: Record<AvatarId, { src: string; label: string; ring: s
   mech: { src: "/sprites/mech.png", label: "Mech", ring: "#5ce0ff" },
   ember: { src: "/sprites/ember.png", label: "Ember", ring: "#ff6b3d" },
   void: { src: "/sprites/void.png", label: "Void", ring: "#b06bff" },
+  zephyr: { src: "/sprites/dex/unreleased-zephyr.png", label: "Zephyr", ring: "#ffe066" },
+  nocturne: { src: "/sprites/dex/unreleased-nocturne.png", label: "Nocturne", ring: "#c4b5ff" },
+  mycelium: { src: "/sprites/dex/unreleased-mycelium.png", label: "Mycelium", ring: "#7dff6a" },
+  solara: { src: "/sprites/dex/unreleased-solara.png", label: "Solara", ring: "#ffd24a" },
+  glacier: { src: "/sprites/dex/unreleased-glacier.png", label: "Glacier", ring: "#9ae8ff" },
+  mirage: { src: "/sprites/dex/unreleased-mirage.png", label: "Mirage", ring: "#ff9df5" },
 };
 
 export function avatarSrc(id: AvatarId): string {
