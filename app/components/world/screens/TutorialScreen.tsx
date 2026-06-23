@@ -37,7 +37,7 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
             and a <b className="text-amber-300">pay-to-play</b> economy — buy SOLAX on pump.fun, burn it to progress, and earn a share of creator rewards through activity, not inflation.
           </p>
           <p className="mt-2 text-[0.72rem] text-white/55">
-            <b className="text-cyan-200">Version 1.3 is live</b> — Season 1: Classified, player trading, friends, challenge duels, and Empire progression. See <b className="text-white">Season 1 Guide</b> and <b className="text-white">Updates</b> in this tutorial.
+            <b className="text-cyan-200">Version 1.3.1 is live</b> — Guest Island try mode, mobile HUD fixes, and ticket board polish. See <b className="text-white">Season 1 Guide</b> and <b className="text-white">Updates</b> in this tutorial.
           </p>
         </>
       ),
@@ -397,6 +397,34 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
           <p className="text-white/70">
             Patch notes for Solaxie island. New Solaxies, features, and fixes ship here first.
           </p>
+
+          <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/5 p-4">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 font-display text-[0.68rem] font-extrabold uppercase tracking-wide text-emerald-200">
+                Version 1.3.1
+              </span>
+              <span className="text-[0.62rem] font-bold uppercase tracking-wide text-emerald-300/80">Live now</span>
+            </div>
+            <p className="mb-2 text-[0.72rem] text-white/55">Mobile polish + try-before-you-connect — play the full island on phone without wallet overlap or clipping.</p>
+            <ul className="list-inside list-disc space-y-1.5 text-[0.74rem] text-white/70">
+              <li><b className="text-white">Try Guest Island</b> — free play mode from the tutorial: spin, breed, battle, and explore with no wallet connect. No cloud saves, SOLAX burns, or season tickets until you link Phantom.</li>
+              <li><b className="text-white">Guest vs linked</b> — Player Market listings, friends follow, and cloud sync require a linked wallet; everything else works in guest mode for demos.</li>
+              <li><b className="text-white">Burner wallet removed from live site</b> — the dev-only &quot;Burner (Local)&quot; test wallet no longer appears on solaxie.com; Phantom and Solflare only in production.</li>
+              <li><b className="text-white">Mobile HUD redesign</b> — two-row top bar on home: logo + avatar on top, scrollable SOLAX / DNA / Eggs / Energy strip below. Stats no longer stack on top of each other on iPhone.</li>
+              <li><b className="text-white">Avatar-only profile on phone</b> — trainer name and rank move into the profile menu so the top-right corner stays compact and tappable.</li>
+              <li><b className="text-white">Island hotspot clearance</b> — Arena, Breed, Harbor, and Empire buttons sit below the HUD so building labels and taps don&apos;t overlap resource counters.</li>
+              <li><b className="text-white">Compact bottom nav</b> — icons-only on mobile; all six tabs fit without horizontal clipping. Safe-area padding for the iPhone home indicator.</li>
+              <li><b className="text-white">Sub-screen mobile headers</b> — Arena, DNA Core, Collection, Market, Empire, and Settings use the same compact layout: title row + scrollable resource chips + bottom nav clearance on scroll.</li>
+              <li><b className="text-white">Collection mobile search</b> — search bar moves into the page body on phone so filters don&apos;t crowd the sticky header.</li>
+              <li><b className="text-white">Safe-area support</b> — notch and home-indicator padding on tutorial, pond arrange, toasts, and bottom dock (<code className="text-emerald-200/80">viewport-fit=cover</code>).</li>
+              <li><b className="text-white">Toasts &amp; modals</b> — notification toasts sit above the bottom nav; breed and system modals layer on top so taps aren&apos;t stolen by the dock.</li>
+              <li><b className="text-white">Economy meter repositioned</b> — mobile &quot;Sunk&quot; chip moved to bottom-left so it doesn&apos;t fight the Harbor Market hotspot on the right.</li>
+              <li><b className="text-white">Ticket board accuracy</b> — Season Ticket Board sorts by live ticket totals; registry and leaderboard polling optimized so refreshes don&apos;t stall the page.</li>
+              <li><b className="text-white">Harbor &amp; DNA polish</b> — shopkeeper speech bubble reflows on narrow screens; 10× spin discount badge no longer clips against the sticky header.</li>
+              <li><b className="text-white">Arena mobile stage</b> — slightly shorter battle stage on small phones so speed controls and fighters stay visible above the nav.</li>
+              <li><b className="text-white">Local dev stability</b> — lighter leaderboard payloads in dev; run <code className="text-emerald-200/80">npm run dev:clean</code> if localhost white-screens after heavy testing.</li>
+            </ul>
+          </div>
 
           <div className="rounded-2xl border border-amber-400/25 bg-amber-500/5 p-4">
             <div className="mb-2 flex flex-wrap items-center gap-2">
