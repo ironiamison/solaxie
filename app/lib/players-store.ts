@@ -1,9 +1,10 @@
 import { head, put } from "@vercel/blob";
 import {
   applyFeaturedFloors,
-  buildFeaturedPlayer,
   featuredEntry,
+  featuredPlayerProfile,
   FEATURED_LEADERS,
+  isFeaturedWallet,
   pinFeaturedLeaderboard,
 } from "./featured-leaderboard";
 import type { PublicPlayer } from "./public-player";
@@ -70,11 +71,16 @@ export async function upsertPlayer(player: PublicPlayer): Promise<void> {
 export async function getPlayer(wallet: string): Promise<PublicPlayer | null> {
   const reg = await getRegistry();
   const stored = reg.players[wallet];
-  if (stored) return applyFeaturedFloors(stored);
   const featured = featuredEntry(wallet);
-  if (!featured) return null;
-  const index = FEATURED_LEADERS.findIndex((f) => f.wallet === wallet);
-  return buildFeaturedPlayer(featured, Math.max(0, index));
+  if (featured) {
+    const index = FEATURED_LEADERS.findIndex((f) => f.wallet === wallet);
+    const profile = featuredPlayerProfile(featured, Math.max(0, index));
+    if (stored) {
+      return applyFeaturedFloors({ ...stored, axols: profile.axols, activeId: profile.activeId }, Date.now(), true);
+    }
+    return profile;
+  }
+  return stored ?? null;
 }
 
 export async function listPlayers(): Promise<PublicPlayer[]> {
@@ -84,13 +90,23 @@ export async function listPlayers(): Promise<PublicPlayer[]> {
 
 export async function pickOpponent(excludeWallet: string, trophies: number): Promise<PublicPlayer | null> {
   const all = await listPlayers();
+  const hydrate = (p: PublicPlayer): PublicPlayer => {
+    if (!isFeaturedWallet(p.wallet) || p.axols.length > 0) return p;
+    const f = featuredEntry(p.wallet);
+    if (!f) return p;
+    const index = FEATURED_LEADERS.findIndex((x) => x.wallet === p.wallet);
+    return featuredPlayerProfile(f, Math.max(0, index));
+  };
   const candidates = all.filter((p) => {
     if (p.wallet === excludeWallet) return false;
-    if (!p.axols.length) return false;
-    if (!p.name.trim()) return false;
-    return Math.abs(p.trophies - trophies) <= 400 || p.trophies >= 1;
-  });
-  const pool = candidates.length ? candidates : all.filter((p) => p.wallet !== excludeWallet && p.axols.length);
+    const row = hydrate(p);
+    if (!row.axols.length) return false;
+    if (!row.name.trim()) return false;
+    return Math.abs(row.trophies - trophies) <= 400 || row.trophies >= 1;
+  }).map(hydrate);
+  const pool = candidates.length
+    ? candidates
+    : all.filter((p) => p.wallet !== excludeWallet).map(hydrate).filter((p) => p.axols.length);
   if (!pool.length) return null;
   return pool[Math.floor(Math.random() * pool.length)];
 }

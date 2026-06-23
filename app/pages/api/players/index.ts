@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { featuredAvatarUrl } from "@/lib/featured-leaderboard";
 import { listPlayers, upsertPlayer } from "@/lib/players-store";
 import { avatarForPlayer, toPublicPlayer, type PlayerSyncPayload } from "@/lib/public-player";
 
@@ -13,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       wallet: p.wallet,
       name: p.name,
       trophies: p.trophies,
-      avatar: avatarForPlayer(p),
+      avatar: featuredAvatarUrl(p.wallet) ?? avatarForPlayer(p),
       league: p.league,
       you: you ? p.wallet === you : false,
     }));

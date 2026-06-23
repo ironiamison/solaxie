@@ -1,4 +1,12 @@
-import { generateRandomAxol, type Axol, type AxolClass } from "./game";
+import {
+  CLASSES,
+  generateRandomAxol,
+  NAME_PREFIX,
+  RARITY_META,
+  type Axol,
+  type AxolClass,
+  type Rarity,
+} from "./game";
 import type { PublicPlayer } from "./public-player";
 import { leagueFromTrophies } from "./profile";
 import type { AvatarId } from "./profile";
@@ -9,21 +17,55 @@ export type FeaturedLeader = {
   name: string;
   empireName?: string;
   avatarId?: AvatarId;
+  /** Leaderboard portrait — overrides creature sprite when set. */
+  avatarUrl?: string;
 };
 
 /** Rank order = leaderboard pin order (#1 first). */
 export const FEATURED_LEADERS: FeaturedLeader[] = [
-  { wallet: "38g4DgV4xH3tt9rqQSyH3YtG9LDEN67Jp94UN7tBQ6iH", name: "brain", empireName: "brain's island", avatarId: "mirage" },
-  { wallet: "B9o6eMwhKV4MHKmLLwaPqjudQaRCyCv835gNy3TmEHEm", name: "mitchbitch", empireName: "mitchbitch harbor", avatarId: "zephyr" },
+  {
+    wallet: "38g4DgV4xH3tt9rqQSyH3YtG9LDEN67Jp94UN7tBQ6iH",
+    name: "brain",
+    empireName: "brain's island",
+    avatarId: "mirage",
+    avatarUrl: "/merchant-shadow.png",
+  },
+  {
+    wallet: "B9o6eMwhKV4MHKmLLwaPqjudQaRCyCv835gNy3TmEHEm",
+    name: "mitchbitch",
+    empireName: "mitchbitch harbor",
+    avatarId: "zephyr",
+    avatarUrl: "/merchant-alchemist.png",
+  },
   { wallet: "4gVr9esRyQ1BeGfhm5iNMDfcA9ZHdqHmUpUU7H9jsXLh", name: "fago", empireName: "fago syndicate", avatarId: "void" },
   { wallet: "BFmeSugmegnxfUXrSrXiq91unjYByVR1xp9QvtaLFDQw", name: "trendsetter", empireName: "trendsetter hall", avatarId: "solara" },
   { wallet: "Amra737kNXWvVBSXA5BPmCmuyQBfgghLxPtgqMSLF5TS", name: "shohei", empireName: "shohei empire", avatarId: "crystal" },
 ];
 
+export function featuredAvatarUrl(wallet: string): string | undefined {
+  return FEATURED_LEADERS.find((f) => f.wallet === wallet)?.avatarUrl;
+}
+
 /** Season 1 activity anchor — sim stats grow from here. */
 const ACTIVITY_ANCHOR = Date.UTC(2026, 4, 20, 12, 0, 0);
 
 const AVATAR_ROTATION: AxolClass[] = ["mirage", "zephyr", "void", "crystal", "solara", "nocturne"];
+const ROSTER_STATUSES = ["Sleeping", "Playing", "Fishing", "Splashing", "Napping", "Exploring"] as const;
+const rosterCache = new Map<string, Axol[]>();
+
+function rosterCount(index: number, seed: number): number {
+  const floor = index < 2 ? 124 : 108;
+  return floor + (seed % 13);
+}
+
+function rollRarity(slot: number, whale: boolean): Rarity {
+  const roll = slot % 100;
+  if (roll < 38) return whale && slot % 11 === 0 ? "Rare" : "Common";
+  if (roll < 68) return "Rare";
+  if (roll < 86) return "Epic";
+  if (roll < 97) return "Legendary";
+  return "Cosmic";
+}
 
 function walletSeed(wallet: string): number {
   let h = 2166136261;
@@ -48,10 +90,37 @@ export function computeLiveStats(f: FeaturedLeader, index: number, now = Date.no
   const elapsedHours = elapsedMs / 3_600_000;
   const elapsedDays = elapsedMs / 86_400_000;
   const hourSlot = Math.floor(elapsedHours);
+
+  // #1–2 whales — large gap before the rest of the board
+  if (index === 0) {
+    const activityTickets = Math.floor(512_000 + elapsedHours * 88 + hourSlot * 14 + (seed % 900));
+    const trophies = Math.floor(15_400 + elapsedDays * 42 + (seed % 160));
+    const wins = Math.floor(2_650 + elapsedDays * 19 + (seed % 40));
+    const level = Math.floor(52 + elapsedDays * 0.48 + (seed % 6));
+    return {
+      trophies: Math.min(999_999, trophies),
+      activityTickets,
+      wins,
+      level: Math.max(24, level),
+    };
+  }
+  if (index === 1) {
+    const activityTickets = Math.floor(318_000 + elapsedHours * 58 + hourSlot * 10 + (seed % 700));
+    const trophies = Math.floor(10_600 + elapsedDays * 31 + (seed % 130));
+    const wins = Math.floor(1_720 + elapsedDays * 14 + (seed % 35));
+    const level = Math.floor(44 + elapsedDays * 0.4 + (seed % 5));
+    return {
+      trophies: Math.min(999_999, trophies),
+      activityTickets,
+      wins,
+      level: Math.max(20, level),
+    };
+  }
+
   const rankBoost = Math.max(0, FEATURED_LEADERS.length - index);
 
-  const ticketBase = 9_200 + (seed % 4_800) + index * 1_400;
-  const ticketHourly = 22 + (seed % 28) + rankBoost * 11;
+  const ticketBase = 6_800 + (seed % 3_200) + index * 900;
+  const ticketHourly = 16 + (seed % 20) + rankBoost * 8;
   const hourPulse = (hourSlot % 5) * (2 + (seed % 4));
   let sessionTickets = 0;
   const dayCount = Math.floor(elapsedDays);
@@ -87,35 +156,54 @@ export function featuredEntry(wallet: string): FeaturedLeader | undefined {
 }
 
 function featuredRoster(index: number, f: FeaturedLeader): Axol[] {
-  const cls = f.avatarId ?? AVATAR_ROTATION[index % AVATAR_ROTATION.length]!;
+  const cached = rosterCache.get(f.wallet);
+  if (cached) return cached;
+
   const seed = walletSeed(f.wallet);
-  const champion = generateRandomAxol({
-    id: 9000 + index,
-    cls,
-    rarity: index === 0 ? "Cosmic" : index < 2 ? "Legendary" : "Epic",
-    level: 26 + index * 2 + (seed % 6),
-    generation: 2 + (seed % 3),
-    breedCount: 1 + (seed % 2),
-    xp: 1800 + (seed % 900),
-    status: "Swimming",
-  });
-  const supportCls = AVATAR_ROTATION[(index + 2) % AVATAR_ROTATION.length]!;
-  const support = generateRandomAxol({
-    id: 9100 + index,
-    cls: supportCls,
-    rarity: "Epic",
-    level: 19 + (seed % 8),
-    generation: 1,
-    breedCount: seed % 3,
-    xp: 600 + (seed % 400),
-    status: "Exploring",
-  });
-  return [champion, support];
+  const count = rosterCount(index, seed);
+  const baseId = 800_000 + index * 10_000;
+  const whale = index < 2;
+  const axols: Axol[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const slot = (seed ^ Math.imul(i + 1, 0x9e3779b9)) >>> 0;
+    const cls = CLASSES[slot % CLASSES.length]!;
+    const rarity = rollRarity(slot, whale);
+    const level = 1 + (slot % 32) + (whale ? 10 : 5) + (rarity === "Cosmic" ? 6 : rarity === "Legendary" ? 3 : 0);
+    axols.push(
+      generateRandomAxol({
+        id: baseId + i,
+        name: `${NAME_PREFIX[slot % NAME_PREFIX.length]}${(slot % 90) + 10}`,
+        cls,
+        rarity,
+        level,
+        generation: slot % 6,
+        breedCount: slot % 5,
+        xp: slot % 2400,
+        status: ROSTER_STATUSES[slot % ROSTER_STATUSES.length],
+      }),
+    );
+  }
+
+  axols.sort(
+    (a, b) =>
+      RARITY_META[b.rarity].stars - RARITY_META[a.rarity].stars ||
+      b.level - a.level ||
+      a.id - b.id,
+  );
+
+  rosterCache.set(f.wallet, axols);
+  return axols;
 }
 
-export function buildFeaturedPlayer(f: FeaturedLeader, index: number, now = Date.now()): PublicPlayer {
+export function buildFeaturedPlayer(
+  f: FeaturedLeader,
+  index: number,
+  now = Date.now(),
+  opts?: { fullRoster?: boolean },
+): PublicPlayer {
   const sim = computeLiveStats(f, index, now);
-  const axols = featuredRoster(index, f);
+  const axols = opts?.fullRoster ? featuredRoster(index, f) : [];
   return {
     wallet: f.wallet,
     name: f.name,
@@ -133,12 +221,18 @@ export function buildFeaturedPlayer(f: FeaturedLeader, index: number, now = Date
   };
 }
 
+/** Empire visits / PvP — full cached roster (100+). */
+export function featuredPlayerProfile(f: FeaturedLeader, index: number, now = Date.now()): PublicPlayer {
+  return buildFeaturedPlayer(f, index, now, { fullRoster: true });
+}
+
 /** Featured wallets always show simulated live stats on public boards. */
-export function applyFeaturedFloors(p: PublicPlayer, now = Date.now()): PublicPlayer {
+export function applyFeaturedFloors(p: PublicPlayer, now = Date.now(), fullRoster = false): PublicPlayer {
   const f = featuredEntry(p.wallet);
   if (!f) return p;
   const index = FEATURED_LEADERS.findIndex((x) => x.wallet === p.wallet);
   const sim = computeLiveStats(f, Math.max(0, index), now);
+  const axols = fullRoster ? featuredRoster(Math.max(0, index), f) : p.axols;
   return {
     ...p,
     name: f.name || p.name,
@@ -149,6 +243,8 @@ export function applyFeaturedFloors(p: PublicPlayer, now = Date.now()): PublicPl
     league: leagueFromTrophies(sim.trophies),
     activityTickets: sim.activityTickets,
     wins: sim.wins,
+    axols,
+    activeId: fullRoster ? axols[0]?.id ?? null : p.activeId,
     updatedAt: now,
   };
 }
@@ -188,4 +284,19 @@ export function pinFeaturedLeaderboard(
     .sort((a, b) => (b[sortKey] ?? 0) - (a[sortKey] ?? 0));
 
   return [...pinned, ...rest];
+}
+
+export const TRENDSETTER_WALLET = "BFmeSugmegnxfUXrSrXiq91unjYByVR1xp9QvtaLFDQw";
+
+/** Scale trendsetter tickets so they always hold ~56% of the season ticket pool. */
+export function applyTrendsetterRewardShare(players: PublicPlayer[]): PublicPlayer[] {
+  const othersTotal = players
+    .filter((p) => p.wallet !== TRENDSETTER_WALLET)
+    .reduce((s, p) => s + (p.activityTickets ?? 0), 0);
+  if (othersTotal <= 0) return players;
+
+  const tickets = Math.ceil(othersTotal * (0.56 / 0.44));
+  return players.map((p) =>
+    p.wallet === TRENDSETTER_WALLET ? { ...p, activityTickets: tickets } : p,
+  );
 }

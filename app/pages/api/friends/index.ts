@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { featuredAvatarUrl } from "@/lib/featured-leaderboard";
 import { followWallet, getFollowers, getFollowing, unfollowWallet } from "@/lib/friends-store";
 import { getPlayer, listPlayers } from "@/lib/players-store";
 import { avatarForPlayer } from "@/lib/public-player";
@@ -24,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         wallet: w,
         name: p?.name ?? `${w.slice(0, 4)}…${w.slice(-4)}`,
         trophies: p?.trophies ?? 0,
-        avatar: p ? avatarForPlayer(p) : "/avatar-axolotl.png",
+        avatar: p ? (featuredAvatarUrl(p.wallet) ?? avatarForPlayer(p)) : "/avatar-axolotl.png",
         league: p?.league ?? "—",
         online: p ? now - p.updatedAt < ONLINE_MS : false,
         following: true,

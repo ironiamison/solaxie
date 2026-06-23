@@ -5,6 +5,7 @@ import type {
   PlayerSyncPayload,
   PublicPlayer,
 } from "./public-player";
+import { featuredAvatarUrl } from "./featured-leaderboard";
 import { avatarForPlayer, battleTeam, pickChampion } from "./public-player";
 
 export async function syncPublicPlayer(payload: PlayerSyncPayload): Promise<void> {
@@ -70,6 +71,6 @@ export function opponentFromPlayer(p: PublicPlayer): {
     team: battleTeam(p),
     isReal: true,
     wallet: p.wallet,
-    avatar: avatarForPlayer(p),
+    avatar: featuredAvatarUrl(p.wallet) ?? avatarForPlayer(p),
   };
 }
