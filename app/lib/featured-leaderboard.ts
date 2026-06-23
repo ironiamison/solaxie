@@ -300,3 +300,16 @@ export function applyTrendsetterRewardShare(players: PublicPlayer[]): PublicPlay
     p.wallet === TRENDSETTER_WALLET ? { ...p, activityTickets: tickets } : p,
   );
 }
+
+/** Ticket board — featured stay in top 5, ranked by tickets (trendsetter #1 at ~56%). */
+export function buildTicketLeaderboard(players: PublicPlayer[], now = Date.now()): PublicPlayer[] {
+  const merged = mergeFeaturedPlayers(players, now);
+  const balanced = applyTrendsetterRewardShare(merged);
+  const pinned = balanced
+    .filter((p) => isFeaturedWallet(p.wallet))
+    .sort((a, b) => (b.activityTickets ?? 0) - (a.activityTickets ?? 0));
+  const rest = balanced
+    .filter((p) => !isFeaturedWallet(p.wallet))
+    .sort((a, b) => (b.activityTickets ?? 0) - (a.activityTickets ?? 0));
+  return [...pinned, ...rest];
+}

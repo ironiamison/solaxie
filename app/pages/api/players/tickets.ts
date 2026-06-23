@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { applyTrendsetterRewardShare, featuredAvatarUrl, pinFeaturedLeaderboard } from "@/lib/featured-leaderboard";
-import { listPlayers } from "@/lib/players-store";
+import { buildTicketLeaderboard, featuredAvatarUrl } from "@/lib/featured-leaderboard";
+import { getRegistry } from "@/lib/players-store";
 import { avatarForPlayer } from "@/lib/public-player";
 import { estimateTicketShare } from "@/lib/season";
 
@@ -13,8 +13,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const you = typeof req.query.you === "string" ? req.query.you : null;
-  const players = await listPlayers();
-  const sorted = applyTrendsetterRewardShare(pinFeaturedLeaderboard(players, "activityTickets"));
+  const reg = await getRegistry();
+  const sorted = buildTicketLeaderboard(Object.values(reg.players));
   const totalPool = sorted.reduce((s, p) => s + (p.activityTickets ?? 0), 0);
 
   const entries = sorted.slice(0, 50).map((p, i) => ({
