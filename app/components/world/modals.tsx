@@ -264,7 +264,7 @@ export function BreedModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 animate-fade">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 animate-fade">
       <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={phase === "idle" ? onClose : undefined} />
       <div className="relative glass-strong w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl p-5 shadow-panel animate-pop sm:p-7">
         {/* close */}

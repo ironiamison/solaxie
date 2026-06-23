@@ -26,7 +26,7 @@ export function Modal({
   maxW?: string;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 animate-fade">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 animate-fade">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className={`relative glass-strong w-full ${maxW} max-h-[90vh] overflow-y-auto rounded-3xl p-5 sm:p-6 shadow-panel animate-pop`}>
         <div className="mb-4 flex items-start justify-between gap-4">

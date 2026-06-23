@@ -17,11 +17,14 @@ const WalletContextProvider: FC<{ children: ReactNode }> = ({ children }) => {
     [],
   );
 
-  // Phantom for real wallets; Burner for local testing without an extension.
-  const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter(), new BurnerWalletAdapter()],
-    [],
-  );
+  // Phantom + Solflare on prod; Burner only for local dev testing.
+  const wallets = useMemo(() => {
+    const list = [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
+    if (process.env.NODE_ENV !== "production") {
+      list.splice(1, 0, new BurnerWalletAdapter());
+    }
+    return list;
+  }, []);
 
   const onError = useCallback((error: WalletError) => {
     console.error("[wallet]", error);

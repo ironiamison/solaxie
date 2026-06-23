@@ -370,7 +370,7 @@ export default function MarketScreen({ world }: { world: WorldApi }) {
     <ScreenShell bg="/harbor-page-bg.png" dark={0.78}>
       <ScreenTop world={world} title="HARBOR MARKET" subtitle="A living port of traders, ships & secrets" icon="/icon-market.png" />
 
-      <div className="mx-auto grid max-w-[1500px] grid-cols-12 gap-3 px-3 pb-28 sm:px-5">
+      <div className="mx-auto grid max-w-[1500px] grid-cols-12 gap-3 px-3 pb-nav sm:px-5">
         <div className="col-span-12 flex gap-1 rounded-full border border-white/10 bg-black/35 p-1 lg:col-span-8">
           <button
             type="button"
@@ -413,7 +413,7 @@ export default function MarketScreen({ world }: { world: WorldApi }) {
               </span>
             </div>
             <img src="/shopkeeper.png" alt="" className="absolute -bottom-1 left-2 z-10 h-40 w-auto animate-floaty object-contain drop-shadow-2xl sm:h-44" draggable={false} />
-            <div className="absolute left-40 top-20 z-20 max-w-[210px] rounded-2xl rounded-bl-none border border-black/10 bg-white px-3 py-2 text-[0.72rem] font-bold leading-snug text-ink-900 shadow-[0_8px_22px_rgba(0,0,0,0.55)] sm:left-48 sm:top-24">
+            <div className="absolute left-2 top-2 z-20 max-w-[min(calc(100%-5rem),12rem)] rounded-2xl rounded-bl-none border border-black/10 bg-white px-2.5 py-1.5 text-[0.62rem] font-bold leading-snug text-ink-900 shadow-[0_8px_22px_rgba(0,0,0,0.55)] sm:left-48 sm:top-24 sm:max-w-[210px] sm:px-3 sm:py-2 sm:text-[0.72rem]">
               Welcome back! The tide brought new traders today.
               <span className="absolute -bottom-1.5 left-4 h-3 w-3 rotate-45 border-b border-r border-black/10 bg-white" />
             </div>

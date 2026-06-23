@@ -86,7 +86,7 @@ export default function EmpireScreen({ world }: { world: WorldApi }) {
         </div>
       ) : null}
 
-      <div className="mx-auto max-w-[1500px] space-y-4 px-3 pb-28 sm:px-5">
+      <div className="mx-auto max-w-[1500px] space-y-4 px-3 pb-nav sm:px-5">
         {!isGuest ? (
           <>
             <SeasonBanner world={world} />

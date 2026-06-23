@@ -36,10 +36,15 @@ export function ProfileDropdown({ world }: { world: WorldApi }) {
     if (!open) { setView("main"); return; }
     const sync = () => {
       const rect = btnRef.current?.getBoundingClientRect();
+      const panel = panelRef.current;
       if (!rect) return;
-      setAnchor({ top: rect.bottom + 8, right: Math.max(8, window.innerWidth - rect.right) });
+      const panelH = panel?.offsetHeight ?? 480;
+      const maxTop = window.innerHeight - panelH - 12;
+      const top = Math.max(8, Math.min(rect.bottom + 8, maxTop));
+      setAnchor({ top, right: Math.max(8, window.innerWidth - rect.right) });
     };
     sync();
+    requestAnimationFrame(sync);
     window.addEventListener("resize", sync);
     window.addEventListener("scroll", sync, true);
     return () => {
@@ -214,30 +219,26 @@ export function ProfileDropdown({ world }: { world: WorldApi }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className={`flex items-center gap-2 rounded-full border py-1 pl-1 pr-2.5 shadow-md backdrop-blur transition hover:-translate-y-0.5 sm:pr-3 ${
-          open ? "border-brand-400/50 bg-ink-900/90 shadow-glow" : "border-white/15 bg-ink-900/75 hover:border-white/30"
+        className={`flex items-center gap-2 rounded-full border py-1 pl-1 shadow-md backdrop-blur transition hover:-translate-y-0.5 ${
+          open ? "border-brand-400/50 bg-ink-900/90 pr-2 shadow-glow" : "border-white/15 bg-ink-900/75 pr-2 hover:border-white/30 sm:pr-3"
         }`}
       >
         <span className="relative grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full ring-2 ring-brand-400/40 sm:h-10 sm:w-10">
           <img src={connected ? pfp : "/avatar-axolotl.png"} alt="" className="h-full w-full scale-110 object-cover" draggable={false} />
           <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2 ring-ink-900 ${connected ? "bg-emerald-400" : "bg-white/35"}`} />
         </span>
-        <span className="hidden min-w-0 flex-col items-start leading-tight sm:flex">
+        <span className="hidden min-w-0 max-w-[9rem] flex-col items-start leading-tight sm:flex">
           <span className="flex items-center gap-1.5">
-            <span className="font-display text-[0.82rem] font-extrabold text-white">{displayName}</span>
+            <span className="truncate font-display text-[0.82rem] font-extrabold text-white">{displayName}</span>
             {connected ? (
-              <span className="rounded-full bg-brand-500/25 px-1.5 py-px text-[0.58rem] font-extrabold text-brand-200">Lv.{p.level}</span>
+              <span className="shrink-0 rounded-full bg-brand-500/25 px-1.5 py-px text-[0.58rem] font-extrabold text-brand-200">Lv.{p.level}</span>
             ) : (
-              <span className="rounded-full bg-white/10 px-1.5 py-px text-[0.58rem] font-extrabold text-white/45">Tutorial</span>
+              <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-px text-[0.58rem] font-extrabold text-white/45">Tutorial</span>
             )}
           </span>
-          <span className="text-[0.6rem] font-bold text-amber-200/90">{connected ? p.league : "Wallet not linked"}</span>
+          <span className="truncate text-[0.6rem] font-bold text-amber-200/90">{connected ? p.league : "Wallet not linked"}</span>
         </span>
-        <span className="flex flex-col leading-tight sm:hidden">
-          <span className="font-display text-[0.72rem] font-extrabold text-white">{connected ? `${displayName} · Lv.${p.level}` : "Guest · Tutorial"}</span>
-          <span className="text-[0.54rem] font-bold text-amber-200/90">{connected ? p.league : "Link wallet"}</span>
-        </span>
-        <Chevron open={open} />
+        <Chevron open={open} className="hidden sm:block" />
       </button>
       {panel}
     </div>
@@ -324,9 +325,9 @@ function ActionRow({ icon, label, onClick }: { icon: string; label: string; onCl
   );
 }
 
-function Chevron({ open }: { open: boolean }) {
+function Chevron({ open, className = "" }: { open: boolean; className?: string }) {
   return (
-    <svg className={`h-4 w-4 shrink-0 text-white/45 transition ${open ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+    <svg className={`h-4 w-4 shrink-0 text-white/45 transition ${open ? "rotate-180" : ""} ${className}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden>
       <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clipRule="evenodd" />
     </svg>
   );

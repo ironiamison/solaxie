@@ -183,7 +183,7 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
     <ScreenShell bg="/dna-core-bg.png" dark={0.5}>
       <ScreenTop world={world} title="DNA CORE" subtitle="Unlock life. Reveal destiny." icon="/icon-shrine.png" />
 
-      <div className="mx-auto grid max-w-[1500px] grid-cols-12 gap-3 px-3 pb-28 sm:px-5">
+      <div className="mx-auto grid max-w-[1500px] grid-cols-12 gap-3 px-3 pb-nav sm:px-5">
         {/* Left rail */}
         <aside className="col-span-12 space-y-3 lg:col-span-3">
           <Panel className="p-4">
@@ -327,7 +327,7 @@ export default function DnaCoreScreen({ world }: { world: WorldApi }) {
               <span className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
                 <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
               </span>
-              <span className="absolute -right-1 -top-3 z-20 rounded-full border-2 border-ink-900 bg-rose-500 px-2 py-0.5 text-[0.58rem] font-extrabold leading-none shadow-[0_2px_8px_rgba(244,63,94,0.55)]">
+              <span className="absolute -right-0.5 -top-1 z-20 rounded-full border-2 border-ink-900 bg-rose-500 px-2 py-0.5 text-[0.58rem] font-extrabold leading-none shadow-[0_2px_8px_rgba(244,63,94,0.55)]">
                 -10%
               </span>
               <span className="relative z-10 text-lg">{phase === "charging" ? "AWAKENING…" : "10× SPIN"}</span>

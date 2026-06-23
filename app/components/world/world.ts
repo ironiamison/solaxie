@@ -22,6 +22,7 @@ export type WorldApi = {
   connecting: boolean;
   purchasing: boolean;
   onConnect: () => Promise<void>;
+  onTryGuest: () => void;
   onDisconnect: () => Promise<void>;
   activeId: number | null;
 
@@ -86,6 +87,8 @@ export type WorldApi = {
   chainReady: boolean;
   /** Deployer demo wallet — unlimited resources, no burns. */
   demoMode: boolean;
+  guestMode: boolean;
+  freePlayMode: boolean;
   /** v1.3 — followed trainers. */
   friends: FriendRow[];
   followTrainer: (targetWallet: string, action?: "follow" | "unfollow") => Promise<boolean>;

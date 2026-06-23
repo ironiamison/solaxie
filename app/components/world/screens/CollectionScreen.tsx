@@ -127,7 +127,18 @@ export default function CollectionScreen({ world }: { world: WorldApi }) {
         }
       />
 
-      <div className="mx-auto grid max-w-[1500px] grid-cols-12 gap-3 px-3 pb-28 sm:px-5">
+      <div className="mx-auto grid max-w-[1500px] grid-cols-12 gap-3 px-3 pb-nav sm:px-5">
+        <div className="col-span-12 md:hidden">
+          <div className="flex items-center gap-2 rounded-full border border-white/12 bg-black/35 px-3 py-2">
+            <GameIcon src={UI.search} size={16} className="opacity-60" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search Solaxies..."
+              className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+            />
+          </div>
+        </div>
         {/* LEFT: pond + collection box */}
         <div className="col-span-12 space-y-3 lg:col-span-8">
           <PondView

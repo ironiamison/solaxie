@@ -51,7 +51,7 @@ export default function SettingsScreen({ world }: { world: WorldApi }) {
     <ScreenShell bg="/empire-bg.png" dark={0.68}>
       <ScreenTop world={world} title="SETTINGS" subtitle="Audio, alerts, account · Solaxie v1.3" icon="/icon-energy.png" />
 
-      <div className="mx-auto max-w-lg space-y-4 px-3 pb-28 sm:px-5">
+      <div className="mx-auto max-w-lg space-y-4 px-3 pb-nav sm:px-5">
         <Panel className="p-4">
           <SectionTitle accent="#54e07a">Audio</SectionTitle>
           <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-4 py-3">

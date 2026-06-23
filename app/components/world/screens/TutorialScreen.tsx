@@ -54,17 +54,26 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
             stores your trainer name, Solaxies, SOLAX balance, battle history, and every upgrade.
           </p>
           <ul className="mt-3 list-inside list-disc space-y-1.5 text-white/70">
-            <li>Disconnected = tutorial only. You cannot roll, breed, battle, or shop.</li>
+            <li><b className="text-white">Try Guest Island</b> — play free with no wallet: spin, breed, battle, and explore. No saves, no SOLAX burns, no season tickets.</li>
             <li>Connected = full access — buy SOLAX on pump.fun, stack activity tickets for creator-reward share.</li>
             <li>Progress saves to cloud + your wallet — Solaxies are on-chain PDAs, profile data syncs via Vercel.</li>
           </ul>
-          <button
-            type="button"
-            onClick={() => world.onConnect()}
-            className="mt-4 w-full rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 py-3 font-display text-base font-extrabold text-white shadow-glow transition hover:-translate-y-0.5"
-          >
-            Link Wallet to Start Playing
-          </button>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => world.onTryGuest()}
+              className="w-full rounded-2xl border border-cyan-400/40 bg-cyan-500/15 py-3 font-display text-base font-extrabold text-cyan-100 transition hover:-translate-y-0.5 hover:bg-cyan-500/25"
+            >
+              Try Guest Island
+            </button>
+            <button
+              type="button"
+              onClick={() => world.onConnect()}
+              className="w-full rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 py-3 font-display text-base font-extrabold text-white shadow-glow transition hover:-translate-y-0.5"
+            >
+              Link Wallet
+            </button>
+          </div>
         </>
       ),
     },
@@ -536,17 +545,18 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
       <div className="fixed inset-0 -z-20 bg-cover bg-center" style={{ backgroundImage: "url(/home-bg.png)" }} />
       <div className="fixed inset-0 -z-10 bg-ink-900/88 backdrop-blur-sm" />
 
-      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-white/10 bg-ink-900/90 px-4 py-3 backdrop-blur">
-        <img src="/logo.png" alt="Solaxie" className="h-9 object-contain" />
+      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-white/10 bg-ink-900/90 px-3 py-2.5 backdrop-blur sm:gap-3 sm:px-4 sm:py-3 pt-[calc(0.625rem+env(safe-area-inset-top,0px))]">
+        <img src="/logo.png" alt="Solaxie" className="h-8 shrink-0 object-contain sm:h-9" />
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-lg font-extrabold text-white">Solaxie Tutorial</h1>
-          <p className="truncate text-[0.62rem] text-white/50">Play and earn activity tickets</p>
+          <h1 className="truncate font-display text-base font-extrabold text-white sm:text-lg">Solaxie Tutorial</h1>
+          <p className="truncate text-[0.58rem] text-white/50 sm:text-[0.62rem]">Play and earn activity tickets</p>
         </div>
-        <TwitterLink />
+        <TutorialMuteButton />
+        <TwitterLink className="hidden sm:inline-flex" />
         <ProfileDropdown world={world} />
       </header>
 
-      <div className="mx-auto grid max-w-5xl gap-4 px-4 py-5 pb-32 lg:grid-cols-[240px_1fr]">
+      <div className="mx-auto grid max-w-5xl gap-4 px-4 py-5 pb-44 lg:grid-cols-[240px_1fr] lg:pb-32">
         <nav className="glass hidden max-h-[calc(100vh-8rem)] overflow-y-auto rounded-3xl p-2 lg:block">
           {sections.map((s) => (
             <button
@@ -608,20 +618,51 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-ink-900/95 px-4 py-3 backdrop-blur">
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-ink-900/95 px-4 py-3 backdrop-blur"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
+      >
         <div className="mx-auto flex max-w-5xl flex-col items-center gap-2 sm:flex-row sm:justify-between">
           <p className="text-center text-[0.72rem] font-semibold text-white/55 sm:text-left">
-            Ready? Link your wallet — buy SOLAX to play, earn tickets, and compete for creator rewards.
+            New here? Try Guest Island free — or link Phantom to save progress and earn season tickets.
           </p>
-          <button
-            type="button"
-            onClick={() => void world.onConnect()}
-            className="w-full shrink-0 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 px-8 py-3 font-display text-sm font-extrabold text-white shadow-glow transition hover:-translate-y-0.5 sm:w-auto"
-          >
-            Link Wallet
-          </button>
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
+            <button
+              type="button"
+              onClick={() => world.onTryGuest()}
+              className="w-full rounded-2xl border border-cyan-400/40 bg-cyan-500/15 px-6 py-3 font-display text-sm font-extrabold text-cyan-100 transition hover:-translate-y-0.5 sm:w-auto"
+            >
+              Try Guest Island
+            </button>
+            <button
+              type="button"
+              onClick={() => void world.onConnect()}
+              className="w-full rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 px-8 py-3 font-display text-sm font-extrabold text-white shadow-glow transition hover:-translate-y-0.5 sm:w-auto"
+            >
+              Link Wallet
+            </button>
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function TutorialMuteButton() {
+  const [muted, setMuted] = useState(false);
+  useEffect(() => setMuted(sfx.isMuted()), []);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const nowMuted = sfx.toggleMuted();
+        setMuted(nowMuted);
+        if (!nowMuted) sfx.startAmbient();
+      }}
+      aria-label={muted ? "Unmute" : "Mute"}
+      className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/15 bg-ink-900/75 text-base shadow-md backdrop-blur transition hover:border-white/40"
+    >
+      {muted ? "🔇" : "🔊"}
+    </button>
   );
 }

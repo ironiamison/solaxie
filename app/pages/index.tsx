@@ -86,6 +86,11 @@ import { STARTER_PROFILE, needsUsername, normalizeProfile, formatTrainerName } f
 import { applyEggRecoveryAirdrop, applyEnergyRefillAirdrop, applyLaunchAirdrop } from "@/lib/airdrops";
 import { applyDemoResources, isDemoWallet } from "@/lib/demo-wallet";
 import {
+  GUEST_SESSION_ID,
+  applyGuestResources,
+  isGuestSession,
+} from "@/lib/guest-mode";
+import {
   buyMarketplaceListing,
   fetchFriendRows,
   fetchMarketplace,
@@ -278,8 +283,6 @@ export default function World() {
   const walletAddress = publicKey?.toBase58() ?? null;
   const isLinked = connected && !!walletAddress;
   const demoMode = useMemo(() => isDemoWallet(walletAddress), [walletAddress]);
-  const demoModeRef = useRef(demoMode);
-  demoModeRef.current = demoMode;
   const [chainReady, setChainReady] = useState(false);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
 
@@ -300,6 +303,10 @@ export default function World() {
   const [breedOpen, setBreedOpen] = useState(false);
   const [wallet, setWallet] = useState<string | null>(null);
   const [walletFull, setWalletFull] = useState<string | null>(null);
+  const guestMode = useMemo(() => isGuestSession(walletFull), [walletFull]);
+  const freePlayMode = demoMode || guestMode;
+  const freePlayRef = useRef(freePlayMode);
+  freePlayRef.current = freePlayMode;
   const [purchasing, setPurchasing] = useState(false);
   const loadedWalletRef = useRef<string | null>(null);
   /** Blocks auto-save until wallet hydrate finishes — prevents wiping saves on connect. */
@@ -649,7 +656,7 @@ export default function World() {
 
   // Log out when wallet disconnects — debounced so adapter blips don't flash tutorial ↔ game.
   useEffect(() => {
-    if (!mounted || connecting || isLinked) return;
+    if (!mounted || connecting || isLinked || isGuestSession(walletFull)) return;
 
     const t = window.setTimeout(() => {
       if (connecting || isLinked) return;
@@ -666,7 +673,7 @@ export default function World() {
     }, 800);
 
     return () => window.clearTimeout(t);
-  }, [mounted, isLinked, connecting]);
+  }, [mounted, isLinked, connecting, walletFull]);
 
   // Patch any axols bred earlier in the session (before cosmetics shipped).
   useEffect(() => {
@@ -679,7 +686,7 @@ export default function World() {
 
   // Auto-save progress — wallet-linked profiles (local cache + cloud).
   useEffect(() => {
-    if (!mounted || !walletFull || !saveReady) return;
+    if (!mounted || !walletFull || !saveReady || isGuestSession(walletFull)) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const snap = buildSave(snapshot());
@@ -711,7 +718,7 @@ export default function World() {
 
   // Sync public profile for global leaderboard & PvP matching.
   useEffect(() => {
-    if (!mounted || !walletFull || needsUsername(profile)) return;
+    if (!mounted || !walletFull || isGuestSession(walletFull) || needsUsername(profile)) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => {
       void syncPublicPlayer({
@@ -767,7 +774,7 @@ export default function World() {
 
   // Load friends list when wallet linked.
   useEffect(() => {
-    if (!walletFull) {
+    if (!walletFull || isGuestSession(walletFull)) {
       setFriends([]);
       return;
     }
@@ -781,7 +788,7 @@ export default function World() {
 
   // Player Market watch alerts — friends + watched classes.
   useEffect(() => {
-    if (!walletFull) return;
+    if (!walletFull || isGuestSession(walletFull)) return;
     let cancelled = false;
     const poll = () => {
       void fetchMarketplace()
@@ -846,7 +853,7 @@ export default function World() {
   }, [connection, publicKey]);
 
   const requireWallet = useCallback(() => {
-    if (!connected || !publicKey) {
+    if (!isGuestSession(walletFull) && (!connected || !publicKey)) {
       toast("Link your wallet to play.", { critical: true });
       return false;
     }
@@ -855,10 +862,53 @@ export default function World() {
       return false;
     }
     return true;
-  }, [connected, publicKey, toast]);
+  }, [connected, publicKey, walletFull, toast]);
+
+  const requireLinkedWallet = useCallback(() => {
+    if (isGuestSession(walletFull)) {
+      toast("Link Phantom to save progress, earn season tickets, and use the Player Market.", {
+        critical: true,
+      });
+      return false;
+    }
+    return requireWallet();
+  }, [walletFull, requireWallet, toast]);
+
+  const startGuestSession = useCallback(() => {
+    sfx.click();
+    sfx.startAmbient();
+    if (loadedWalletRef.current === GUEST_SESSION_ID) return;
+    loadedWalletRef.current = GUEST_SESSION_ID;
+    setSaveReady(false);
+    const fresh = freshSave();
+    const guestProfile = normalizeProfile({
+      ...fresh.profile,
+      name: "Guest",
+      usernameSet: true,
+      empireName: "Guest Island",
+    });
+    primeIds(fresh.axols);
+    battleId.current = fresh.battleIdCounter;
+    apply({
+      ...fresh,
+      resources: normalizeResources(applyGuestResources(fresh.resources)),
+      profile: guestProfile,
+    });
+    setWallet("Guest");
+    setWalletFull(GUEST_SESSION_ID);
+    setSaveReady(true);
+    setChainReady(false);
+    setScreen("home");
+    setBreedOpen(false);
+    void fetchGlobalFeed().then(setFeed).catch(() => {});
+    toast(
+      "Guest mode — spin, breed & battle free. Link Phantom to save progress and stack season tickets.",
+      { critical: true },
+    );
+  }, [toast]);
 
   const applyChainState = useCallback(async () => {
-    if (demoModeRef.current) return;
+    if (freePlayRef.current) return;
     if (!chainClient) return;
     const state = await chainClient.refreshState();
     setAxols(state.axols.map(withCosmetic));
@@ -872,7 +922,7 @@ export default function World() {
   /** Transfer SOLAX to burn wallet, verify on-chain, refresh balance. */
   const burnAndRefresh = useCallback(
     async (cost: number): Promise<boolean> => {
-      if (demoModeRef.current) return true;
+      if (freePlayRef.current) return true;
       if (!requireWallet() || !publicKey) {
         toast("Connect wallet to spend SOLAX", { critical: true });
         return false;
@@ -933,7 +983,7 @@ export default function World() {
     if (!requireWallet()) return null;
 
     const r = resourcesRef.current;
-    const demo = demoModeRef.current;
+    const demo = freePlayRef.current;
 
     if (!demo) {
       if (r.dna < COSTS.roll.dna) {
@@ -1013,7 +1063,7 @@ export default function World() {
 
   const doBreed = async (aId: number, bId: number, solaxCost = 0): Promise<Axol | null> => {
     if (!requireWallet()) return null;
-    const demo = demoModeRef.current;
+    const demo = freePlayRef.current;
     const a = axols.find((x) => x.id === aId);
     const b = axols.find((x) => x.id === bId);
     if (!a || !b) return null;
@@ -1063,7 +1113,7 @@ export default function World() {
 
   const doBattle = async (myId: number, enemyOverride?: Axol) => {
     if (!requireWallet()) return null;
-    const demo = demoModeRef.current;
+    const demo = freePlayRef.current;
     const mine = axols.find((x) => x.id === myId);
     if (!mine) return null;
     const enemy = enemyOverride ?? wildAxol(mine);
@@ -1127,7 +1177,7 @@ export default function World() {
   };
 
   const spendDna = useCallback((amount: number): boolean => {
-    if (demoModeRef.current) return true;
+    if (freePlayRef.current) return true;
     if (amount <= 0) return true;
     if (resources.dna < amount) return false;
     setResources((r) => ({ ...r, dna: r.dna - amount }));
@@ -1135,7 +1185,7 @@ export default function World() {
   }, [resources.dna]);
 
   const consumeHarborItems = useCallback((keys: string[]): boolean => {
-    if (demoModeRef.current) return true;
+    if (freePlayRef.current) return true;
     const items = normalizeItems(resources.items);
     for (const k of keys) {
       if ((items[k] ?? 0) < 1) return false;
@@ -1197,7 +1247,7 @@ export default function World() {
       toast(`+${itemEffect.amount.toLocaleString()} XP for ${target.name}`);
     }
 
-    if (label && price > 0 && !demoModeRef.current) {
+    if (label && price > 0 && !freePlayRef.current) {
       announceFeed(`bought ${label}!`, "#2fe0cf");
       grantProgression("market_purchase", price);
     }
@@ -1235,7 +1285,7 @@ export default function World() {
 
   const claimDnaBonus = (): boolean => {
     if (!requireWallet()) return false;
-    if (!demoModeRef.current) {
+    if (!freePlayRef.current) {
       const remaining = dnaBonusRemaining(lastDnaBonusAt);
       if (remaining > 0) {
         toast(`Next bonus in ${formatCooldown(remaining)}`);
@@ -1297,7 +1347,7 @@ export default function World() {
     if (blocks <= 0) return false;
     if (!(await burnAndRefresh(cost))) return false;
     setResources((r) => applyDemoResources({ ...r, energy: Math.min(r.maxEnergy, r.energy + gain) }));
-    if (!demoModeRef.current) grantProgression("energy_refill", cost);
+    if (!freePlayRef.current) grantProgression("energy_refill", cost);
     announceFeed(`refilled ${gain} energy`, "#ffd24a");
     return true;
   };
@@ -1348,7 +1398,7 @@ export default function World() {
 
   const followTrainer = useCallback(
     async (targetWallet: string, action: "follow" | "unfollow" = "follow"): Promise<boolean> => {
-      if (!walletFull || targetWallet === walletFull) return false;
+      if (!requireLinkedWallet() || !walletFull || targetWallet === walletFull) return false;
       try {
         await apiFollow(walletFull, targetWallet, action);
         const rows = await fetchFriendRows(walletFull);
@@ -1360,12 +1410,12 @@ export default function World() {
         return false;
       }
     },
-    [walletFull, toast],
+    [walletFull, toast, requireLinkedWallet],
   );
 
   const listSolaxyForSale = useCallback(
     async (axolId: number, priceSolax: number): Promise<boolean> => {
-      if (!requireWallet() || !walletFull) return false;
+      if (!requireLinkedWallet() || !walletFull) return false;
       if (axols.length <= 1) {
         toast("Keep at least one Solaxy in your pond!");
         return false;
@@ -1395,7 +1445,7 @@ export default function World() {
           ...p,
           appliedAirdrops: [...(p.appliedAirdrops ?? []), "v13_listed"].filter((x, i, arr) => arr.indexOf(x) === i),
         }));
-        if (!demoModeRef.current) grantProgression("market_purchase", SEASON_1.listingFeeSolax);
+        if (!freePlayRef.current) grantProgression("market_purchase", SEASON_1.listingFeeSolax);
         announceFeed(`listed ${CLASS_META[a.cls].name} #${a.id} for ${priceSolax.toLocaleString()} SOLAX`, "#2fe0cf");
         toast("Listed on Player Market!");
         return true;
@@ -1405,12 +1455,12 @@ export default function World() {
         return false;
       }
     },
-    [axols, activeId, walletFull, burnAndRefresh, requireWallet, toast, announceFeed, grantProgression],
+    [axols, activeId, walletFull, burnAndRefresh, requireLinkedWallet, toast, announceFeed, grantProgression],
   );
 
   const buyMarketListing = useCallback(
     async (listingId: string, priceSolax: number): Promise<boolean> => {
-      if (!requireWallet() || !walletFull) return false;
+      if (!requireLinkedWallet() || !walletFull) return false;
       const tax = Math.ceil(priceSolax * SEASON_1.saleTaxRate);
       const total = priceSolax + tax;
       if (!(await burnAndRefresh(total))) return false;
@@ -1422,7 +1472,7 @@ export default function World() {
           queueMicrotask(() => checkDexRewards());
           return next;
         });
-        if (!demoModeRef.current) grantProgression("market_purchase", total);
+        if (!freePlayRef.current) grantProgression("market_purchase", total);
         announceFeed(`bought ${CLASS_META[axol.cls].name} #${axol.id} on the market!`, CLASS_META[axol.cls].color);
         toast(`Purchased ${CLASS_META[axol.cls].name} #${axol.id}!`);
         return true;
@@ -1431,7 +1481,7 @@ export default function World() {
         return false;
       }
     },
-    [walletFull, burnAndRefresh, requireWallet, toast, announceFeed, grantProgression, checkDexRewards],
+    [walletFull, burnAndRefresh, requireLinkedWallet, toast, announceFeed, grantProgression, checkDexRewards],
   );
 
   const setUsername = (raw: string) => {
@@ -1511,15 +1561,21 @@ export default function World() {
       if (connected && publicKey) return;
       setWalletModalOpen(true);
     },
+    onTryGuest: () => startGuestSession(),
     onDisconnect: async () => {
-      if (walletFull) saveWallet(walletFull, buildSave(snapshot()));
+      const wasGuest = isGuestSession(walletFull);
+      if (walletFull && !wasGuest) {
+        saveWallet(walletFull, buildSave(snapshot()));
+      }
       loadedWalletRef.current = null;
       setPondArranging(false);
       setPondArrangeView(null);
-      try {
-        await disconnect();
-      } catch {
-        /* wallet may already be disconnected */
+      if (isLinked) {
+        try {
+          await disconnect();
+        } catch {
+          /* wallet may already be disconnected */
+        }
       }
       apply(loggedOutSave());
       setWallet(null);
@@ -1529,7 +1585,11 @@ export default function World() {
       setScreen("home");
       setBreedOpen(false);
       clearLastWallet();
-      toast("Disconnected. Link your wallet to continue playing.");
+      toast(
+        wasGuest
+          ? "Guest session ended. Link Phantom to save progress and earn season tickets."
+          : "Disconnected. Link your wallet to continue playing.",
+      );
     },
     profile,
     needsUsername: needsUsername(profile),
@@ -1604,6 +1664,8 @@ export default function World() {
     resetPondLayout,
     chainReady,
     demoMode,
+    guestMode,
+    freePlayMode,
     friends,
     followTrainer,
     listSolaxyForSale,
@@ -1635,7 +1697,6 @@ export default function World() {
         <TutorialScreen world={world} />
         <ConnectWalletModal open={walletModalOpen} onClose={() => setWalletModalOpen(false)} onError={toast} />
         <Toast msg={toastMsg} />
-        <MuteButton />
       </>
     );
   }
@@ -1654,20 +1715,25 @@ export default function World() {
 
           <Atmosphere />
 
-          <header className="absolute inset-x-0 top-0 z-30 flex flex-wrap items-center gap-2 bg-gradient-to-b from-ink-900/85 to-transparent px-3 py-2 sm:px-5">
-            <img src="/logo.png" alt="Solaxie" className="mr-1 h-8 object-contain" />
-            <ResourcePill icon="/icons/coin.png" label="SOLAX" value={Math.round(resources.solax).toLocaleString()} />
-            <ResourcePill icon="/icons/dna.png" label="DNA" value={resources.dna} />
-            <ResourcePill icon="/icons/egg.png" label="Eggs" value={resources.eggs} />
-            <EnergyPill energy={resources.energy} max={resources.maxEnergy} streak={resources.streak} />
-            <TwitterLink className="hidden sm:inline-flex" />
-            <div className="ml-auto flex items-center gap-2">
-              <TwitterLink className="sm:hidden" />
-              <ProfileDropdown world={world} />
+          <header className="absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-ink-900/95 via-ink-900/85 to-transparent pt-[env(safe-area-inset-top,0px)]">
+            <div className="flex items-center gap-2 px-3 py-1.5 sm:px-5">
+              <img src="/logo.png" alt="Solaxie" className="h-7 shrink-0 object-contain sm:h-8" />
+              <TwitterLink className="hidden md:inline-flex" />
+              <div className="ml-auto shrink-0">
+                <ProfileDropdown world={world} />
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto px-3 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] sm:px-5 sm:pb-2.5 [&::-webkit-scrollbar]:hidden">
+              <ResourcePill compact icon="/icons/coin.png" label="SOLAX" value={Math.round(resources.solax).toLocaleString()} />
+              <ResourcePill compact icon="/icons/dna.png" label="DNA" value={resources.dna} />
+              <ResourcePill compact icon="/icons/egg.png" label="Eggs" value={resources.eggs} />
+              <EnergyPill compact energy={resources.energy} max={resources.maxEnergy} streak={resources.streak} />
             </div>
           </header>
 
-          <div className="absolute inset-0 z-20">
+          <div
+            className="absolute inset-x-0 bottom-[var(--nav-clearance)] top-[var(--home-hud)] z-20"
+          >
             {BUILDINGS.map((b) => (
               <BuildingButton key={b.id} b={b} onClick={() => onBuilding(b.target)} />
             ))}
@@ -1730,7 +1796,7 @@ export default function World() {
         <BreedModal
           axols={axols}
           resources={resources}
-          demoMode={demoMode}
+          demoMode={freePlayMode}
           onBreed={doBreed}
           onClose={() => setBreedOpen(false)}
         />
@@ -1770,28 +1836,13 @@ export default function World() {
 
 // --------------------------- shared bits ------------------------------------
 
-function MuteButton() {
-  const [muted, setMuted] = useState(false);
-  useEffect(() => setMuted(sfx.isMuted()), []);
-  return (
-    <button
-      onClick={() => {
-        const nowMuted = sfx.toggleMuted();
-        setMuted(nowMuted);
-        if (!nowMuted) sfx.startAmbient();
-      }}
-      aria-label={muted ? "Unmute" : "Mute"}
-      className="fixed bottom-6 right-4 z-[60] grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-ink-900/75 text-base shadow-md backdrop-blur transition hover:scale-105 hover:border-white/40"
-    >
-      {muted ? "🔇" : "🔊"}
-    </button>
-  );
-}
-
 function Toast({ msg }: { msg: string | null }) {
   if (!msg) return null;
   return (
-    <div className="pointer-events-none fixed bottom-28 left-1/2 z-[100] -translate-x-1/2 animate-pop">
+    <div
+      className="pointer-events-none fixed left-1/2 z-[100] -translate-x-1/2 animate-pop"
+      style={{ bottom: "var(--toast-bottom)" }}
+    >
       <div className="rounded-full border border-white/15 bg-ink-850/95 px-5 py-2.5 font-display text-sm font-extrabold text-white shadow-glow backdrop-blur">
         {msg}
       </div>
@@ -1801,21 +1852,53 @@ function Toast({ msg }: { msg: string | null }) {
 
 // --------------------------- HUD pieces ------------------------------------
 
-function ResourcePill({ icon, label, value }: { icon: string; label: string; value: string | number }) {
+function ResourcePill({
+  icon,
+  label,
+  value,
+  compact = false,
+}: {
+  icon: string;
+  label: string;
+  value: string | number;
+  compact?: boolean;
+}) {
   return (
-    <div className="flex items-center gap-2 rounded-full border border-white/15 bg-ink-900/70 py-1 pl-1 pr-3.5 shadow-md backdrop-blur">
-      <span className="grid h-8 w-8 place-items-center rounded-full bg-white/10 shadow-inner">
-        <img src={icon} alt="" className="h-6 w-6 object-contain" />
+    <div
+      className={`flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-ink-900/70 shadow-md backdrop-blur ${
+        compact ? "py-0.5 pl-0.5 pr-2" : "gap-2 py-1 pl-1 pr-3.5"
+      }`}
+    >
+      <span
+        className={`grid place-items-center rounded-full bg-white/10 shadow-inner ${
+          compact ? "h-6 w-6" : "h-8 w-8"
+        }`}
+      >
+        <img src={icon} alt="" className={`object-contain ${compact ? "h-4 w-4" : "h-6 w-6"}`} />
       </span>
       <div className="leading-none">
-        <div className="font-display text-sm font-extrabold text-white">{value}</div>
-        <div className="text-[0.5rem] uppercase tracking-wide text-white/50">{label}</div>
+        <div className={`font-display font-extrabold tabular-nums text-white ${compact ? "text-xs" : "text-sm"}`}>
+          {value}
+        </div>
+        <div className={`uppercase tracking-wide text-white/50 ${compact ? "text-[0.42rem]" : "text-[0.5rem]"}`}>
+          {label}
+        </div>
       </div>
     </div>
   );
 }
 
-function EnergyPill({ energy, max, streak }: { energy: number; max: number; streak: number }) {
+function EnergyPill({
+  energy,
+  max,
+  streak,
+  compact = false,
+}: {
+  energy: number;
+  max: number;
+  streak: number;
+  compact?: boolean;
+}) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!isEnergyBoostActive(now)) return;
@@ -1823,17 +1906,38 @@ function EnergyPill({ energy, max, streak }: { energy: number; max: number; stre
     return () => clearInterval(t);
   }, [now]);
   const boostLeft = energyBoostRemaining(now);
+  const subLabel =
+    boostLeft > 0
+      ? compact
+        ? formatCooldown(boostLeft)
+        : `500 boost · ${formatCooldown(boostLeft)} left`
+      : compact
+        ? `${streak}d`
+        : `Energy · ${streak}d streak`;
   return (
-    <div className="flex items-center gap-2 rounded-full border border-white/15 bg-ink-900/70 py-1 pl-1 pr-3.5 shadow-md backdrop-blur">
-      <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-b from-yellow-400/30 to-yellow-600/20">
-        <img src="/icon-energy.png" alt="" className="h-6 w-6 object-contain" draggable={false} />
+    <div
+      className={`flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-ink-900/70 shadow-md backdrop-blur ${
+        compact ? "py-0.5 pl-0.5 pr-2" : "gap-2 py-1 pl-1 pr-3.5"
+      }`}
+    >
+      <span
+        className={`grid place-items-center rounded-full bg-gradient-to-b from-yellow-400/30 to-yellow-600/20 ${
+          compact ? "h-6 w-6" : "h-8 w-8"
+        }`}
+      >
+        <img
+          src="/icon-energy.png"
+          alt=""
+          className={`object-contain ${compact ? "h-4 w-4" : "h-6 w-6"}`}
+          draggable={false}
+        />
       </span>
       <div className="leading-none">
-        <div className="font-display text-sm font-extrabold text-white">
+        <div className={`font-display font-extrabold tabular-nums text-white ${compact ? "text-xs" : "text-sm"}`}>
           {energy}/{max}
         </div>
-        <div className="text-[0.5rem] uppercase tracking-wide text-white/50">
-          {boostLeft > 0 ? `500 boost · ${formatCooldown(boostLeft)} left` : `Energy · ${streak}d streak`}
+        <div className={`uppercase tracking-wide text-white/50 ${compact ? "text-[0.42rem]" : "text-[0.5rem]"}`}>
+          {compact ? `Energy · ${subLabel}` : subLabel}
         </div>
       </div>
     </div>
@@ -2000,8 +2104,11 @@ function BottomNav({ current, onNav }: { current: Screen; onNav: (m: Screen) => 
   useEffect(() => setMuted(sfx.isMuted()), []);
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 flex justify-center bg-gradient-to-t from-ink-900/90 to-transparent pb-3 pt-6">
-      <div className="flex items-end gap-2 rounded-full border border-white/15 bg-ink-850/90 px-2.5 py-2 shadow-panel backdrop-blur">
+    <nav
+      className="fixed inset-x-0 bottom-0 z-50 flex justify-center bg-gradient-to-t from-ink-900/95 via-ink-900/80 to-transparent px-2 pt-4"
+      style={{ paddingBottom: "calc(0.5rem + var(--safe-bottom))" }}
+    >
+      <div className="flex max-w-[calc(100vw-12px)] items-end gap-0.5 overflow-x-auto rounded-full border border-white/15 bg-ink-850/90 px-1.5 py-1.5 shadow-panel backdrop-blur [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-2 sm:px-2.5 sm:py-2 [&::-webkit-scrollbar]:hidden">
         <button
           onClick={() => {
             const nowMuted = sfx.toggleMuted();
@@ -2009,24 +2116,24 @@ function BottomNav({ current, onNav }: { current: Screen; onNav: (m: Screen) => 
             if (!nowMuted) sfx.startAmbient();
           }}
           aria-label={muted ? "Unmute" : "Mute"}
-          className="mb-1 grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-base text-white/70 transition hover:bg-white/15 hover:text-white"
+          className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 bg-white/5 text-sm text-white/70 transition hover:bg-white/15 hover:text-white sm:mb-1 sm:h-9 sm:w-9 sm:text-base"
         >
           {muted ? "🔇" : "🔊"}
         </button>
         {NAV.map((n) => {
           const active = current === n.id;
           return (
-            <button key={n.label} onClick={() => onNav(n.id)} className="group flex flex-col items-center gap-1 px-1.5">
+            <button key={n.label} onClick={() => onNav(n.id)} className="group flex shrink-0 flex-col items-center gap-0.5 px-0.5 sm:gap-1 sm:px-1.5">
               <span
-              className={`grid h-11 w-11 place-items-center rounded-full transition-all duration-150 ${
+              className={`grid h-9 w-9 place-items-center rounded-full transition-all duration-150 sm:h-11 sm:w-11 ${
                 active
                   ? "scale-110 border-2 border-white/50 bg-gradient-to-b from-brand-400 to-brand-600 shadow-glow"
                   : "border border-white/10 bg-white/5 opacity-85 group-hover:scale-105 group-hover:bg-white/15 group-hover:opacity-100"
               }`}
               >
-                <img src={n.icon} alt="" className="h-7 w-7 object-contain drop-shadow" draggable={false} />
+                <img src={n.icon} alt="" className="h-6 w-6 object-contain drop-shadow sm:h-7 sm:w-7" draggable={false} />
               </span>
-              <span className={`text-[0.6rem] font-bold ${active ? "text-white" : "text-white/55"}`}>{n.label}</span>
+              <span className={`hidden text-[0.6rem] font-bold sm:block ${active ? "text-white" : "text-white/55"}`}>{n.label}</span>
             </button>
           );
         })}

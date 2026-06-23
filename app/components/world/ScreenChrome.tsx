@@ -15,26 +15,37 @@ export function SectionTitle({ children, accent = "#c08bff" }: { children: React
   );
 }
 
-function ResChip({ icon, value, label }: { icon: ReactNode; value: ReactNode; label: string }) {
+function ResChip({ icon, value, label, compact = false }: { icon: ReactNode; value: ReactNode; label: string; compact?: boolean }) {
   return (
-    <div className="flex items-center gap-2 rounded-full border border-white/12 bg-ink-900/70 py-1 pl-1 pr-3 shadow-md backdrop-blur">
-      <span className="grid h-7 w-7 place-items-center rounded-full bg-white/10 text-base">{icon}</span>
+    <div
+      className={`flex shrink-0 items-center gap-1.5 rounded-full border border-white/12 bg-ink-900/70 shadow-md backdrop-blur ${
+        compact ? "py-0.5 pl-0.5 pr-2" : "gap-2 py-1 pl-1 pr-3"
+      }`}
+    >
+      <span className={`grid place-items-center rounded-full bg-white/10 ${compact ? "h-6 w-6 text-sm" : "h-7 w-7 text-base"}`}>
+        {icon}
+      </span>
       <div className="leading-none">
-        <div className="font-display text-[0.82rem] font-extrabold text-white">{value}</div>
-        <div className="text-[0.46rem] uppercase tracking-wide text-white/45">{label}</div>
+        <div className={`font-display font-extrabold tabular-nums text-white ${compact ? "text-xs" : "text-[0.82rem]"}`}>
+          {value}
+        </div>
+        <div className={`uppercase tracking-wide text-white/45 ${compact ? "text-[0.42rem]" : "text-[0.46rem]"}`}>
+          {label}
+        </div>
       </div>
     </div>
   );
 }
 
-export function ResChips({ world }: { world: WorldApi }) {
+export function ResChips({ world, compact = false }: { world: WorldApi; compact?: boolean }) {
   const r = world.resources;
+  const iconSize = compact ? "h-4 w-4" : "h-5 w-5";
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <ResChip icon={<img src="/icons/coin.png" alt="" className="h-5 w-5 object-contain" />} value={Math.round(r.solax).toLocaleString()} label="SOLAX" />
-      <ResChip icon={<img src="/icons/dna.png" alt="" className="h-5 w-5 object-contain" />} value={r.dna} label="DNA" />
-      <ResChip icon={<img src="/icons/egg.png" alt="" className="h-5 w-5 object-contain" />} value={r.eggs} label="Eggs" />
-      <ResChip icon={<img src="/icon-energy.png" alt="" className="h-5 w-5 object-contain" />} value={`${r.energy}/${r.maxEnergy}`} label="Energy" />
+    <div className="flex items-center gap-1.5">
+      <ResChip compact={compact} icon={<img src="/icons/coin.png" alt="" className={`${iconSize} object-contain`} />} value={Math.round(r.solax).toLocaleString()} label="SOLAX" />
+      <ResChip compact={compact} icon={<img src="/icons/dna.png" alt="" className={`${iconSize} object-contain`} />} value={r.dna} label="DNA" />
+      <ResChip compact={compact} icon={<img src="/icons/egg.png" alt="" className={`${iconSize} object-contain`} />} value={r.eggs} label="Eggs" />
+      <ResChip compact={compact} icon={<img src="/icon-energy.png" alt="" className={`${iconSize} object-contain`} />} value={`${r.energy}/${r.maxEnergy}`} label="Energy" />
     </div>
   );
 }
@@ -54,27 +65,31 @@ export function ScreenTop({
   center?: ReactNode;
 }) {
   return (
-    <header className="sticky top-0 z-30 flex flex-wrap items-center gap-3 bg-gradient-to-b from-ink-900/90 to-transparent px-3 py-3 sm:px-5">
-      <button
-        onClick={() => world.setScreen("home")}
-        className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/15 bg-ink-850/80 text-lg text-white shadow-md backdrop-blur transition hover:-translate-y-0.5 hover:border-white/40"
-        aria-label="Back to pond"
-      >
-        ←
-      </button>
-      <div className="flex items-center gap-2.5">
-        {icon ? <img src={icon} alt="" className="h-10 w-10 shrink-0 object-contain drop-shadow-[0_0_12px_rgba(168,99,255,0.45)]" draggable={false} /> : null}
-        <div className="leading-tight">
-          <h1 className="font-display text-xl font-extrabold tracking-wide text-white">{title}</h1>
-          {subtitle ? <p className="text-[0.66rem] text-white/55">{subtitle}</p> : null}
+    <header className="sticky top-0 z-30 bg-gradient-to-b from-ink-900/95 via-ink-900/85 to-ink-900/70 pt-[env(safe-area-inset-top,0px)]">
+      <div className="flex items-center gap-2 px-3 py-2 sm:gap-3 sm:px-5 sm:py-3">
+        <button
+          onClick={() => world.setScreen("home")}
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/15 bg-ink-850/80 text-lg text-white shadow-md backdrop-blur transition hover:-translate-y-0.5 hover:border-white/40 sm:h-11 sm:w-11"
+          aria-label="Back to pond"
+        >
+          ←
+        </button>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {icon ? <img src={icon} alt="" className="h-9 w-9 shrink-0 object-contain drop-shadow-[0_0_12px_rgba(168,99,255,0.45)] sm:h-10 sm:w-10" draggable={false} /> : null}
+          <div className="min-w-0 leading-tight">
+            <h1 className="truncate font-display text-lg font-extrabold tracking-wide text-white sm:text-xl">{title}</h1>
+            {subtitle ? <p className="truncate text-[0.62rem] text-white/55 sm:text-[0.66rem]">{subtitle}</p> : null}
+          </div>
+        </div>
+        <div className="shrink-0">
+          <ProfileDropdown world={world} />
         </div>
       </div>
 
-      {center ? <div className="order-last w-full sm:order-none sm:w-auto sm:mx-2">{center}</div> : null}
+      {center ? <div className="hidden px-3 pb-1 md:block sm:px-5">{center}</div> : null}
 
-      <div className="ml-auto flex items-center gap-2">
-        <ResChips world={world} />
-        <ProfileDropdown world={world} />
+      <div className="overflow-x-auto px-3 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] sm:px-5 sm:pb-3 [&::-webkit-scrollbar]:hidden">
+        <ResChips world={world} compact />
       </div>
     </header>
   );

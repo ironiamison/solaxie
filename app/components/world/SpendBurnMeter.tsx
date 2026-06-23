@@ -152,7 +152,10 @@ export function SpendBurnMeter({ variant = "sidebar" }: { variant?: "sidebar" | 
 
   // Mobile / tablet: compact chip — expands upward, stays clear of dock art
   return (
-    <div className="fixed bottom-[4.6rem] right-3 z-30 lg:hidden">
+    <div
+      className="fixed left-3 z-30 lg:hidden"
+      style={{ bottom: "var(--nav-clearance)" }}
+    >
       {!open ? (
         <button
           type="button"

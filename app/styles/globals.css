@@ -4,6 +4,12 @@
 
 :root {
   color-scheme: dark;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nav-bar: 4.5rem;
+  --nav-clearance: calc(var(--nav-bar) + var(--safe-bottom) + 0.75rem);
+  --home-hud: calc(var(--safe-top) + 5.85rem);
+  --toast-bottom: calc(var(--nav-clearance) + 0.25rem);
 }
 
 * {
@@ -49,6 +55,9 @@ body {
   }
   .glass-strong {
     @apply border border-white/15 bg-ink-850/90 backdrop-blur-md;
+  }
+  .pb-nav {
+    padding-bottom: var(--nav-clearance);
   }
 }
 

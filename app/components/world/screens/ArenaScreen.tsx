@@ -294,7 +294,10 @@ export default function ArenaScreen({ world }: { world: WorldApi }) {
         center={<RankPill trophies={trophies} />}
       />
 
-      <div className="mx-auto max-w-[1500px] px-3 pb-28 sm:px-5">
+      <div className="mx-auto max-w-[1500px] px-3 pb-nav sm:px-5">
+        <div className="mb-3 flex justify-center md:hidden">
+          <RankPill trophies={trophies} />
+        </div>
         <Stage
           mine={mine}
           enemy={enemy}
@@ -409,8 +412,7 @@ function Stage({
 
   return (
     <div
-      className={`relative mt-1 overflow-hidden rounded-[2rem] border border-white/10 shadow-panel ${bigShake ? "animate-shake" : ""}`}
-      style={{ height: "min(64vh, 660px)" }}
+      className={`relative mt-1 h-[min(52vh,560px)] overflow-hidden rounded-[2rem] border border-white/10 shadow-panel sm:h-[min(64vh,660px)] ${bigShake ? "animate-shake" : ""}`}
     >
       <Ambiance />
       <AltarFloor active={phase !== "lobby"} hot={phase === "commencing" || phase === "matched"} />
@@ -1359,13 +1361,13 @@ function RewardRow({ img, star, color, label }: { img?: string; star?: boolean; 
 function TeamTray({ world, team, myId, setMyId }: { world: WorldApi; team: Axol[]; myId: number | null; setMyId: (id: number) => void }) {
   const [paid, setPaid] = useState(0);
   useEffect(() => {
-    if (world.demoMode) {
+    if (world.freePlayMode) {
       setPaid(SLOT_PRICES.length);
       return;
     }
     const v = Number(window.localStorage?.getItem("arena_paid_slots"));
     if (!Number.isNaN(v) && v > 0) setPaid(Math.min(SLOT_PRICES.length, v));
-  }, [world.demoMode]);
+  }, [world.freePlayMode]);
   const capacity = Math.min(MAX_TEAM, FREE_SLOTS + paid);
 
   async function unlock(slotIndex: number) {

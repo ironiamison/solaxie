@@ -19,7 +19,7 @@ export function PondArrangeOverlay({
   onReset: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-900/88 p-3 backdrop-blur-sm sm:p-6">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-900/88 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-[calc(0.75rem+env(safe-area-inset-top,0px))] backdrop-blur-sm sm:p-6">
       <div className="relative flex h-full w-full max-w-4xl flex-col">
         <header className="mb-2 flex shrink-0 items-center justify-between gap-2">
           <div>
