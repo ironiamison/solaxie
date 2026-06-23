@@ -33,8 +33,11 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
             battle rivals, and climb the empire ranks — all tied to your wallet as your permanent trainer profile.
           </p>
           <p className="mt-2">
-            Think Axie-style progression with a neon island vibe: <b className="text-white">11 elemental classes</b>, five rarity tiers from Common to Cosmic,
+            Think Axie-style progression with a neon island vibe: <b className="text-white">17 elemental classes</b> (6 classic, 5 Primal, 6 Classified), five rarity tiers from Common to Cosmic,
             and a <b className="text-amber-300">pay-to-play</b> economy — buy SOLAX on pump.fun, burn it to progress, and earn a share of creator rewards through activity, not inflation.
+          </p>
+          <p className="mt-2 text-[0.72rem] text-white/55">
+            <b className="text-cyan-200">Version 1.3 is live</b> — Season 1: Classified, player trading, friends, challenge duels, and Empire progression. See <b className="text-white">Season 1 Guide</b> and <b className="text-white">Updates</b> in this tutorial.
           </p>
         </>
       ),
@@ -75,11 +78,12 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
           <p>The home screen is your floating island. Solaxies swim in the central pond; buildings around the map are shortcuts to every activity.</p>
           <div className="mt-3 grid grid-cols-2 gap-2 text-[0.72rem]">
             {[
-              ["Arena Cave", "Battle wild challengers", UI.arena],
-              ["DNA Shrine", "Opens the DNA Core", UI.shrine],
+              ["Arena Cave", "Battle trainers · friend challenges", UI.arena],
+              ["DNA Shrine", "Spins + Season 1 Classified drops", UI.shrine],
               ["Nursery Tree", "Breed two parents", UI.nursery],
-              ["Harbor Market", "Buy supplies & deals", UI.market],
-              ["Empire Hall", "Leagues, guild, history", UI.empire],
+              ["Harbor Market", "Shop + Player Market (P2P)", UI.market],
+              ["Empire Hall", "Season board, friends, achievements", UI.empire],
+              ["Collection", "SolaxyDex, list for sale", UI.collection],
             ].map(([t, s, ic]) => (
               <div key={t} className="flex items-start gap-2.5 py-1">
                 <GameIcon src={ic as string} size={24} glow="#c08bff" className="mt-0.5 shrink-0" />
@@ -104,11 +108,12 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
           <ul className="mt-3 list-inside list-disc space-y-1.5 text-white/70">
             <li><b className="text-white">1× Spin</b> — one reveal per press.</li>
             <li><b className="text-white">10× Spin</b> — batch roll; great for hunting Epic+.</li>
+            <li><b className="text-white">Season 1 Classified</b> — ~2.8% odds per spin for Zephyr, Nocturne, Mycelium, Solara, Glacier, or Mirage (see Empire season banner for countdown).</li>
             <li><b className="text-white">Boosters</b> — optional luck charms before spinning (costs extra DNA).</li>
             <li><b className="text-white">Energy refill</b> — 100k SOLAX per 10 energy when you run dry.</li>
             <li>Each hatch earns <b className="text-white">activity tickets</b> toward your creator-reward share.</li>
           </ul>
-          <p className="mt-3 text-white/60">Rarities: Common → Rare → Epic → Legendary → Cosmic (1% jackpot).</p>
+          <p className="mt-3 text-white/60">Rarities: Common → Rare → Epic → Legendary → Cosmic (1% jackpot). Primal &amp; Classified elements have unique sprites.</p>
         </>
       ),
     },
@@ -123,8 +128,15 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
           <ul className="mt-3 list-inside list-disc space-y-1.5 text-white/70">
             <li><b className="text-white">Feed</b> — spend SOLAX for XP (cost scales with level).</li>
             <li><b className="text-white">Power Up</b> — level up instantly for a larger SOLAX burn (level-ups earn activity tickets).</li>
-            <li><b className="text-white">Set Active</b> — pick your pond leader & battle default.</li>
+            <li><b className="text-white">Set Active</b> — pick your pond leader &amp; battle default.</li>
             <li><b className="text-white">Breed</b> — opens the Nursery Tree with this Solaxy.</li>
+            <li><b className="text-white">List on Player Market</b> — sell a Solaxy for SOLAX (50k listing fee burned; min 10,000 SOLAX price).</li>
+            <li><b className="text-white">Release</b> — permanently remove a Solaxy from your roster.</li>
+          </ul>
+          <p className="mt-3 font-display text-[0.62rem] font-extrabold uppercase tracking-widest text-fuchsia-200/90">SolaxyDex tab</p>
+          <ul className="mt-2 list-inside list-disc space-y-1.5 text-white/70">
+            <li>Track all <b className="text-white">91+ playable forms</b> — filter by element, strains, or Classified.</li>
+            <li><b className="text-white">Dex completion reward</b> — unlock every form in an element line for +2 eggs &amp; +120 activity tickets (one-time per line).</li>
           </ul>
           <p className="mt-3">Six stats matter in combat: HP, ATK, DEF, SPD, Skill, and Morale.</p>
         </>
@@ -155,11 +167,19 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
       body: (
         <>
           <p>Spend SOLAX on DNA packs, energy, eggs, boosters, and limited flash ships. Merchants rotate; harbor level unlocks better stock. Every purchase earns <b className="text-white">activity tickets</b>.</p>
-          <ul className="mt-3 list-inside list-disc space-y-1.5 text-white/70">
+          <p className="mt-2 font-display text-[0.62rem] font-extrabold uppercase tracking-widest text-cyan-200/90">Harbor Shop (default tab)</p>
+          <ul className="mt-2 list-inside list-disc space-y-1.5 text-white/70">
             <li><b className="text-white">Traveling merchants</b> — three NPC shops with different specialties.</li>
             <li><b className="text-white">Flash ships</b> — timed cargo with premium bundles.</li>
             <li><b className="text-white">Daily deal</b> — discounted mystery egg.</li>
             <li><b className="text-white">Black market</b> — unlocks at harbor level 16.</li>
+          </ul>
+          <p className="mt-3 font-display text-[0.62rem] font-extrabold uppercase tracking-widest text-cyan-200/90">Player Market tab (v1.3)</p>
+          <ul className="mt-2 list-inside list-disc space-y-1.5 text-white/70">
+            <li><b className="text-white">Buy Solaxies</b> — browse listings from other trainers (5% sale tax burned).</li>
+            <li><b className="text-white">Market watch</b> — toggle element chips to get alerts when that class is listed.</li>
+            <li><b className="text-white">Friend listings</b> — auto-toast when someone you follow lists a Solaxy (Settings → Notifications must be on).</li>
+            <li>List from <b className="text-white">Collection</b> → select a Solaxy → <b className="text-white">List on Player Market</b>.</li>
           </ul>
         </>
       ),
@@ -171,12 +191,13 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
       accent: "#b14bff",
       body: (
         <>
-          <p>Send a Solaxy into the Arena Cave to fight a wild opponent. Class advantages matter: Beast beats Plant, Plant beats Aquatic, and so on.</p>
+          <p>Send a Solaxy into the Arena Cave to fight wild opponents or <b className="text-white">real trainers</b>. Class advantages matter: Beast beats Plant, Plant beats Aquatic, and so on — plus Primal and Classified triangles.</p>
           <ul className="mt-3 list-inside list-disc space-y-1.5 text-white/70">
             <li>Each fight costs <b className="text-white">energy</b>.</li>
-            <li>Wins grant <b className="text-white">+5 DNA</b>, <b className="text-white">+40 XP</b>, and <b className="text-white">activity tickets</b> toward your creator-reward share.</li>
+            <li>Wins grant <b className="text-white">+5 DNA</b>, <b className="text-white">+40 XP</b>, trophies (+8 / −6), and <b className="text-white">activity tickets</b>.</li>
             <li>First 3 team slots are free; extra Arena slots unlock with SOLAX.</li>
-            <li>Match real trainers when they&apos;re synced — cross-device rosters live with cloud save (Version 1.2).</li>
+            <li><b className="text-white">Find Opponent</b> — matches live trainers when synced to the global registry.</li>
+            <li><b className="text-white">Friend challenge (⚔)</b> — from Empire Hall, Global leaderboard, or Friends tab → sends you here for a direct duel vs their champion.</li>
           </ul>
         </>
       ),
@@ -188,8 +209,73 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
       accent: "#ffb02e",
       body: (
         <>
-          <p>Track your league rank, guild standing, chest progress, and battle log. Rename your empire and flex cosmetics from your profile menu.</p>
-          <p className="mt-3 text-white/70">Trainer level rises as you play. Activity tickets stack in your profile from every action — season payouts scale with your ticket share once SOLAX is live.</p>
+          <p>Track your league rank, season progress, social graph, and legacy. Rename your empire and flex cosmetics from your profile menu.</p>
+          <ul className="mt-3 list-inside list-disc space-y-1.5 text-white/70">
+            <li><b className="text-white">Season 1 banner</b> — Classified drop odds, countdown, your tickets &amp; estimated creator-reward share %.</li>
+            <li><b className="text-white">Economy ticker</b> — live SOLAX sunk in-game, 24h DEX volume, market cap.</li>
+            <li><b className="text-white">Season Ticket Board</b> — global ticket rankings, pool total, your rank &amp; share.</li>
+            <li><b className="text-white">Leaderboard panel</b> — Global (trophies), Empire (power), Friends tabs · <b className="text-white">+</b> to follow · <b className="text-white">⚔</b> to challenge.</li>
+            <li><b className="text-white">Hall of Legends</b> — your oldest, highest level, rarest, and highest-gen Solaxies.</li>
+            <li><b className="text-white">Achievements</b> — badge hall with progress (Classified Clearance, Dex Scholar, Harbor Trader, etc.).</li>
+            <li><b className="text-white">Battle History</b> — recent fights · <b className="text-white">View Full History</b> for complete log.</li>
+            <li><b className="text-white">Visit Empire</b> — tap any trainer on the leaderboard to tour their hall · <b className="text-white">Challenge to Arena</b> from their profile.</li>
+            <li><b className="text-white">Empire Chest</b> — win battles to unlock egg rewards.</li>
+          </ul>
+          <p className="mt-3 text-white/60">Trainer level rises as you play. Activity tickets stack from every action — season payouts scale with your ticket share at season end.</p>
+        </>
+      ),
+    },
+    {
+      id: "season1",
+      title: "Season 1 Guide (v1.3)",
+      icon: "/sprites/dex/unreleased-mirage.png",
+      accent: "#2fe0cf",
+      body: (
+        <>
+          <p>
+            <b className="text-white">Season 1: Classified</b> is live. Here is every v1.3 feature and exactly where to find it in-game.
+          </p>
+          <div className="mt-4 overflow-hidden rounded-2xl border border-white/10">
+            <table className="w-full text-left text-[0.68rem]">
+              <thead>
+                <tr className="border-b border-white/10 bg-black/40 text-[0.58rem] font-extrabold uppercase tracking-wide text-white/45">
+                  <th className="px-3 py-2">Feature</th>
+                  <th className="px-3 py-2">Where to find it</th>
+                </tr>
+              </thead>
+              <tbody className="text-white/75">
+                {[
+                  ["Classified DNA drops", "DNA Core spins · Empire season banner"],
+                  ["6 Classified elements", "SolaxyDex → Classified filter · Collection"],
+                  ["Season countdown & share %", "Empire → top Season 1 banner"],
+                  ["Live economy stats", "Empire → economy ticker (SOLAX sunk, DEX vol)"],
+                  ["Global ticket leaderboard", "Empire → Season Ticket Board"],
+                  ["Follow trainers", "Empire → Global tab → + on a row"],
+                  ["Friends list", "Empire → Friends tab"],
+                  ["Challenge duel (⚔)", "Empire visit · leaderboard · Friends tab → Arena"],
+                  ["Player Market (buy)", "Harbor → Player Market tab"],
+                  ["List Solaxy for sale", "Collection → select Solaxy → List on Player Market"],
+                  ["Market watch alerts", "Harbor → Player Market → element chips"],
+                  ["Friend listing toasts", "Automatic when following (Settings → Notifications)"],
+                  ["Achievements / badges", "Empire → Achievements tab"],
+                  ["Full battle history", "Empire → Battle History → View Full History"],
+                  ["Hall of Legends", "Empire → center bottom panel"],
+                  ["Dex completion rewards", "SolaxyDex — complete a full element line"],
+                  ["Demo mode (testing)", "Connect wallet Hd6svr…SEpo — unlimited, no burns"],
+                ].map(([feat, where]) => (
+                  <tr key={feat} className="border-b border-white/5 even:bg-white/[0.02]">
+                    <td className="px-3 py-2 font-semibold text-white">{feat}</td>
+                    <td className="px-3 py-2 text-white/60">{where}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-[0.72rem] text-white/55">
+            Classified elements: <b className="text-white">Zephyr · Nocturne · Mycelium · Solara · Glacier · Mirage</b>.
+            Player Market burns 50k SOLAX to list + 5% tax on sales. Stack tickets before season end for creator-reward share.
+            See <b className="text-white">Updates</b> for the Version 1.4 roadmap.
+          </p>
         </>
       ),
     },
@@ -235,6 +321,7 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
             <li><b className="text-white">Breeding & hatching</b> — new bloodlines and egg reveals</li>
             <li><b className="text-white">Quests</b> — daily island objectives</li>
             <li><b className="text-white">Harbor Market</b> — trades and flash-ship purchases</li>
+            <li><b className="text-white">Player Market</b> — listing fees and sale taxes (burned SOLAX)</li>
             <li><b className="text-white">Level-ups</b> — feed, power-up, and trainer progression</li>
           </ul>
 
@@ -243,6 +330,7 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
             <li><b className="text-white">Feed & Power Up</b> — costs rise every level (~1.4× feed, ~1.7× power-up). High-level Solaxies are SOLAX sinks.</li>
             <li><b className="text-white">Breeding</b> — 2 free breeds per 5 hours; after that, 500k SOLAX + 1 egg per hatch.</li>
             <li><b className="text-white">Harbor Market</b> — DNA packs, eggs, energy crates, flash ships, daily deals.</li>
+            <li><b className="text-white">Player Market</b> — 50k SOLAX listing fee + 5% sale tax (all burned).</li>
             <li><b className="text-white">Energy refills</b> — 100k SOLAX per 10 energy at the DNA Core when you want to keep spinning.</li>
           </ul>
           <p className="mt-2 text-[0.72rem] text-white/50">Burns keep demand on SOLAX as you progress — you cannot max everything for free.</p>
@@ -277,6 +365,7 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
             ["DNA", "Gene strands for DNA Core spins.", UI.dna],
             ["Eggs", "Required to breed after free daily breeds.", UI.egg],
             ["Energy", "Powers DNA spins and arena fights.", UI.energy],
+            ["Player listings", "Sell Solaxies on Harbor → Player Market; 50k list fee burned.", UI.market],
           ].map(([name, desc, ic]) => (
             <div key={name} className="flex gap-3 py-1.5">
               <GameIcon src={ic as string} size={28} glow="#ffd24a" className="shrink-0" />
@@ -345,6 +434,30 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
               <li><b className="text-white">Friend challenge duels</b> — ⚔ from Empire Hall or leaderboard to fight a followed trainer in Arena.</li>
               <li><b className="text-white">Market watch alerts</b> — toast when friends list or a watched class hits Player Market.</li>
               <li><b className="text-white">Global ticket leaderboard</b> — live season ticket totals and estimated creator-reward share on Empire.</li>
+              <li><b className="text-white">Demo deployer wallet</b> — unlimited resources &amp; no SOLAX burns for testing.</li>
+              <li><b className="text-white">Stability pass</b> — Empire crash fix, wallet disconnect debounce, skeleton loaders for ticker/ticket board, dev cache clean script (<code className="text-cyan-200/80">npm run dev:clean</code>).</li>
+            </ul>
+          </div>
+
+          <div className="rounded-2xl border border-violet-400/25 bg-violet-500/5 p-4">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-violet-500/20 px-2.5 py-0.5 font-display text-[0.68rem] font-extrabold uppercase tracking-wide text-violet-200">
+                Version 1.4
+              </span>
+              <span className="text-[0.62rem] font-bold uppercase tracking-wide text-white/40">Planned · roadmap</span>
+            </div>
+            <p className="mb-2 text-[0.72rem] text-white/55">What we&apos;re eyeing next — subject to change based on Season 1 data and community feedback.</p>
+            <ul className="list-inside list-disc space-y-1.5 text-[0.74rem] text-white/70">
+              <li><b className="text-white">Season 1 payout execution</b> — on-chain SOLAX creator-reward distribution to ticket holders at season snapshot.</li>
+              <li><b className="text-white">Classified evolution lines</b> — full 5-form dex entries for all 6 Classified elements (like Primal quality).</li>
+              <li><b className="text-white">Hand-illustrated dex finish</b> — unique art for every classic &amp; Classified form, replacing filter-based echoes.</li>
+              <li><b className="text-white">Guild wars &amp; brackets</b> — scheduled team tournaments with bonus tickets and Empire prestige.</li>
+              <li><b className="text-white">Auction house</b> — timed bids on rare Solaxies beyond fixed-price Player Market listings.</li>
+              <li><b className="text-white">Empire customization</b> — burn SOLAX to decorate your Hall and pond with season cosmetics.</li>
+              <li><b className="text-white">Expanded quest board</b> — weekly Empire quests, streak bonuses, and season milestone tracks.</li>
+              <li><b className="text-white">Battle replay sharing</b> — save and share Arena replay links; spectate top-trainer matches.</li>
+              <li><b className="text-white">Push &amp; email alerts</b> — market watches, friend challenges, and season events outside the browser tab.</li>
+              <li><b className="text-white">On-chain Solaxy NFTs</b> — optional Metaplex wrap for top Solaxies to trade on external marketplaces.</li>
             </ul>
           </div>
 
@@ -370,8 +483,8 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
               <li><b className="text-white">SolaxyDex</b> — full creature compendium tab in Collection with progress bar and element filters.</li>
               <li><b className="text-white">85 playable forms</b> — base, Rare/Epic/Legendary echoes, Cosmic evolutions, and breed strains across all lines.</li>
               <li><b className="text-white">5 new Primal elements</b> — Crystal, Shadow, Mech, Ember, and Void, each with 5 illustrated evolution forms.</li>
-              <li><b className="text-white">6 classified teasers</b> — future Solaxies visible in dex as locked Version 1.3 entries.</li>
-              <li><b className="text-white">11 elements total</b> — new Primal triangle (Crystal → Mech → Ember) plus Shadow beats Void.</li>
+              <li><b className="text-white">Classified teasers</b> — later shipped live as Season 1 in Version 1.3.</li>
+              <li><b className="text-white">17 elements total</b> — classic 6 + Primal 5 + Classified 6 (Season 1).</li>
               <li><b className="text-white">Pond arrange mode</b> — drag Solaxies on home pond and collection preview; separate layouts per view.</li>
               <li><b className="text-white">Release Solaxy</b> — permanently remove a creature from your roster and pond layout.</li>
               <li><b className="text-white">DNA bonus</b> — free DNA grant every 4 hours with cooldown timer and sound.</li>

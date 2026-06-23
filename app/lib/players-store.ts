@@ -1,4 +1,11 @@
 import { head, put } from "@vercel/blob";
+import {
+  applyFeaturedFloors,
+  buildFeaturedPlayer,
+  featuredEntry,
+  FEATURED_LEADERS,
+  pinFeaturedLeaderboard,
+} from "./featured-leaderboard";
 import type { PublicPlayer } from "./public-player";
 
 const BLOB_PATH = "solaxie/global-players.json";
@@ -50,7 +57,7 @@ export async function getRegistry(): Promise<Registry> {
 
 export async function upsertPlayer(player: PublicPlayer): Promise<void> {
   const reg = await getRegistry();
-  reg.players[player.wallet] = player;
+  reg.players[player.wallet] = applyFeaturedFloors(player);
 
   const list = Object.values(reg.players).sort((a, b) => b.trophies - a.trophies);
   const trimmed: Record<string, PublicPlayer> = {};
@@ -62,12 +69,17 @@ export async function upsertPlayer(player: PublicPlayer): Promise<void> {
 
 export async function getPlayer(wallet: string): Promise<PublicPlayer | null> {
   const reg = await getRegistry();
-  return reg.players[wallet] ?? null;
+  const stored = reg.players[wallet];
+  if (stored) return applyFeaturedFloors(stored);
+  const featured = featuredEntry(wallet);
+  if (!featured) return null;
+  const index = FEATURED_LEADERS.findIndex((f) => f.wallet === wallet);
+  return buildFeaturedPlayer(featured, Math.max(0, index));
 }
 
 export async function listPlayers(): Promise<PublicPlayer[]> {
   const reg = await getRegistry();
-  return Object.values(reg.players).sort((a, b) => b.trophies - a.trophies);
+  return pinFeaturedLeaderboard(Object.values(reg.players), "trophies");
 }
 
 export async function pickOpponent(excludeWallet: string, trophies: number): Promise<PublicPlayer | null> {
