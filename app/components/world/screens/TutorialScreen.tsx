@@ -483,18 +483,23 @@ export default function TutorialScreen({ world }: { world: WorldApi }) {
               </span>
               <span className="text-[0.62rem] font-bold uppercase tracking-wide text-white/40">Planned · roadmap</span>
             </div>
-            <p className="mb-2 text-[0.72rem] text-white/55">What we&apos;re eyeing next — subject to change based on Season 1 data and community feedback.</p>
+            <p className="mb-2 text-[0.72rem] text-white/55">Priority roadmap for Season 1 wrap-up and growth — order may shift based on player data and feedback.</p>
             <ul className="list-inside list-disc space-y-1.5 text-[0.74rem] text-white/70">
-              <li><b className="text-white">Season 1 payout execution</b> — on-chain SOLAX creator-reward distribution to ticket holders at season snapshot.</li>
-              <li><b className="text-white">Classified evolution lines</b> — full 5-form dex entries for all 6 Classified elements (like Primal quality).</li>
-              <li><b className="text-white">Hand-illustrated dex finish</b> — unique art for every classic &amp; Classified form, replacing filter-based echoes.</li>
-              <li><b className="text-white">Guild wars &amp; brackets</b> — scheduled team tournaments with bonus tickets and Empire prestige.</li>
-              <li><b className="text-white">Auction house</b> — timed bids on rare Solaxies beyond fixed-price Player Market listings.</li>
-              <li><b className="text-white">Empire customization</b> — burn SOLAX to decorate your Hall and pond with season cosmetics.</li>
-              <li><b className="text-white">Expanded quest board</b> — weekly Empire quests, streak bonuses, and season milestone tracks.</li>
-              <li><b className="text-white">Battle replay sharing</b> — save and share Arena replay links; spectate top-trainer matches.</li>
-              <li><b className="text-white">Push &amp; email alerts</b> — market watches, friend challenges, and season events outside the browser tab.</li>
-              <li><b className="text-white">On-chain Solaxy NFTs</b> — optional Metaplex wrap for top Solaxies to trade on external marketplaces.</li>
+              <li><b className="text-white">Guided first-session quest chain</b> — 5-minute onboarding path after Guest Island: spin → feed → win a battle → see tickets tick → prompt to link Phantom and save progress.</li>
+              <li><b className="text-white">Season 1 payout execution</b> — on-chain SOLAX creator-reward distribution to ticket holders at the season snapshot; closes the loop on play-and-earn.</li>
+              <li><b className="text-white">Referral links with ticket rewards</b> — invite codes so both referrer and new trainer earn bonus activity tickets when the friend links a wallet and hatches.</li>
+              <li><b className="text-white">PWA install + push notifications</b> — add to home screen on mobile; pushes for friend challenges, market watches, and season countdown alerts.</li>
+              <li><b className="text-white">Hand-illustrated Classified dex</b> — full unique art for all 6 Classified elements and their evolution lines (Primal-quality sprites, not filter echoes).</li>
+              <li><b className="text-white">Weekly Empire quest track</b> — week-long goals beyond the daily 3 (element wins, market listings, dex milestones) with ticket and egg payouts.</li>
+              <li><b className="text-white">Battle replay links + spectate</b> — shareable Arena replay URLs and a feed to watch top trainers fight (content + social proof for X).</li>
+              <li><b className="text-white">Auction house for rare Solaxies</b> — timed bids on Epic+ listings beyond fixed-price Player Market; listing and bid fees sink SOLAX.</li>
+              <li><b className="text-white">Public season dashboard</b> — live page for total SOLAX sunk, ticket leaders, season countdown, and estimated creator-reward pool share.</li>
+              <li><b className="text-white">Guild squads</b> — small trainer groups (5–10) with shared weekly goals and a ticket bonus when multiple members are active.</li>
+              <li><b className="text-white">Empire customization</b> — burn SOLAX for pond skins, Hall banners, and season cosmetics when visiting other trainers.</li>
+              <li><b className="text-white">Element meta report</b> — monthly public win-rate breakdown by class so competitive players see balance is tracked and patched.</li>
+              <li><b className="text-white">KOL / creator codes</b> — trackable promo codes attributing signups and ticket activity for partners and collabs.</li>
+              <li><b className="text-white">Challenge inbox + rematch</b> — pending friend duels inbox with accept/decline and one-tap rematch after a fight.</li>
+              <li><b className="text-white">Guest → wallet migration</b> — one-tap import of Guest Island roster (capped) when linking Phantom so try-mode converts to a saved account.</li>
             </ul>
           </div>
 
